@@ -2,11 +2,12 @@ const express = require("express");
 const Quote = require("../models/Quote");
 const { requireAdmin } = require("../middleware/auth");
 const { sendQuoteNotification } = require("../utils/sendEmail");
+const { quoteLimiter } = require("../middleware/rateLimiters");
 
 const router = express.Router();
 
 // POST /api/quotes — public, this is what the site's quote form submits to
-router.post("/", async (req, res) => {
+router.post("/", quoteLimiter, async (req, res) => {
   try {
     const { name, phone, product, quantity, notes, preferredContact } = req.body;
     if (!name || !phone || !product) {

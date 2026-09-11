@@ -2,11 +2,12 @@ const express = require("express");
 const jwt = require("jsonwebtoken");
 const Admin = require("../models/Admin");
 const { requireAdmin } = require("../middleware/auth");
+const { loginLimiter } = require("../middleware/rateLimiters");
 
 const router = express.Router();
 
 // POST /api/auth/login
-router.post("/login", async (req, res) => {
+router.post("/login", loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) {
