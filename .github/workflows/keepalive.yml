@@ -1,0 +1,16 @@
+name: Keep backend alive
+
+on:
+  schedule:
+    # Runs every 10 minutes. Render's free tier sleeps after 15 minutes
+    # of no traffic, so pinging at 10 keeps it comfortably awake.
+    - cron: "*/10 * * * *"
+  workflow_dispatch: # lets you trigger it manually from the Actions tab too
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping the backend
+        run: |
+          curl -s -o /dev/null -w "Status: %{http_code}\n" https://manik-backend-re8v.onrender.com
