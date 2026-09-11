@@ -6,8 +6,8 @@ require("dotenv").config();
 const mongoose = require("mongoose");
 const Admin = require("./models/Admin");
 
-const EMAIL = "owner@manik.com"; // TODO: real login email
-const PASSWORD = "changeme123"; // TODO: real password — change this before running
+const EMAIL = "eugeneejike51@gmail.com"; // TODO: real login email
+const PASSWORD = "Caporano"; // TODO: real password — change this before running
 const NAME = "MANIK Admin";
 
 async function run() {
