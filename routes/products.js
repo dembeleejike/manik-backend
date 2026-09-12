@@ -5,10 +5,18 @@ const { upload, uploadAll } = require("../config/cloudinary");
 
 const router = express.Router();
 
-// GET /api/products — public. Supports ?category=<id> to filter.
+// GET /api/products — public. Supports ?category=<id> and ?search=<text>
 router.get("/", async (req, res) => {
   const filter = {};
   if (req.query.category) filter.category = req.query.category;
+  if (req.query.search) {
+    const term = req.query.search.trim();
+    filter.$or = [
+      { name: { $regex: term, $options: "i" } },
+      { ref: { $regex: term, $options: "i" } },
+      { description: { $regex: term, $options: "i" } },
+    ];
+  }
   const products = await Product.find(filter).populate("category").sort({ createdAt: -1 });
   res.json(products);
 });

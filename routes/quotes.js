@@ -9,12 +9,15 @@ const router = express.Router();
 // POST /api/quotes — public, this is what the site's quote form submits to
 router.post("/", quoteLimiter, async (req, res) => {
   try {
-    const { name, phone, product, quantity, notes, preferredContact } = req.body;
-    if (!name || !phone || !product) {
-      return res.status(400).json({ error: "Name, phone and product are required" });
+    const { requestType, name, phone, product, quantity, location, notes, preferredContact } = req.body;
+    if (!name || !phone) {
+      return res.status(400).json({ error: "Name and phone are required" });
+    }
+    if (requestType === "Material" && !product) {
+      return res.status(400).json({ error: "Please specify which product you need" });
     }
 
-    const quote = await Quote.create({ name, phone, product, quantity, notes, preferredContact });
+    const quote = await Quote.create({ requestType, name, phone, product, quantity, location, notes, preferredContact });
 
     // Fire the email notification but don't make the customer wait for it
     sendQuoteNotification(quote);

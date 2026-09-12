@@ -14,10 +14,12 @@ const transporter = nodemailer.createTransport({
 async function sendQuoteNotification(quote) {
   const html = `
     <h2>New quote request — MANIK</h2>
+    <p><strong>Request type:</strong> ${quote.requestType || "Material"}</p>
     <p><strong>Name:</strong> ${quote.name}</p>
     <p><strong>Phone:</strong> ${quote.phone}</p>
-    <p><strong>Product:</strong> ${quote.product}</p>
+    <p><strong>Product:</strong> ${quote.product || "—"}</p>
     <p><strong>Quantity:</strong> ${quote.quantity || "—"}</p>
+    <p><strong>Location:</strong> ${quote.location || "—"}</p>
     <p><strong>Notes:</strong> ${quote.notes || "—"}</p>
     <p><strong>Preferred contact:</strong> ${quote.preferredContact}</p>
     <hr/>

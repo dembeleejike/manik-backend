@@ -8,6 +8,7 @@ const productRoutes = require("./routes/products");
 const categoryRoutes = require("./routes/categories");
 const quoteRoutes = require("./routes/quotes");
 const projectRoutes = require("./routes/projects");
+const settingsRoutes = require("./routes/settings");
 
 const app = express();
 
@@ -23,6 +24,7 @@ app.use("/api/products", productRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/quotes", quoteRoutes);
 app.use("/api/projects", projectRoutes);
+app.use("/api/settings", settingsRoutes);
 
 // Catch-all error handler — keeps a single bad request from crashing the whole server
 app.use((err, req, res, next) => {
