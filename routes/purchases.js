@@ -1,7 +1,7 @@
 const express = require("express");
 const Purchase = require("../models/Purchase");
 const Product = require("../models/Product");
-const { requireAdmin } = require("../middleware/auth");
+const { requireAdmin, requireOwner } = require("../middleware/auth");
 
 const router = express.Router();
 
@@ -53,7 +53,7 @@ router.post("/", async (req, res) => {
 });
 
 // DELETE /api/purchases/:id — reverses the stock increase before deleting
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", requireOwner, async (req, res) => {
   const purchase = await Purchase.findById(req.params.id);
   if (!purchase) return res.status(404).json({ error: "Purchase not found" });
 

@@ -6,6 +6,7 @@ const adminSchema = new mongoose.Schema(
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     password: { type: String, required: true }, // stored hashed, never plain text
     name: { type: String, default: "Admin" },
+    role: { type: String, enum: ["owner", "staff"], default: "staff" }, // owner sees financials/settings, staff handles day-to-day
   },
   { timestamps: true }
 );

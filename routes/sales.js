@@ -4,7 +4,7 @@ const Product = require("../models/Product");
 const Quote = require("../models/Quote");
 const Customer = require("../models/Customer");
 const { sendLowStockAlert } = require("../utils/sendEmail");
-const { requireAdmin } = require("../middleware/auth");
+const { requireAdmin, requireOwner } = require("../middleware/auth");
 
 const router = express.Router();
 
@@ -88,7 +88,7 @@ router.post("/", async (req, res) => {
 });
 
 // DELETE /api/sales/:id — reverses the stock decrease before deleting
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", requireOwner, async (req, res) => {
   const sale = await Sale.findById(req.params.id);
   if (!sale) return res.status(404).json({ error: "Sale not found" });
 

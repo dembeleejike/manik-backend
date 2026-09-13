@@ -1,6 +1,7 @@
 const express = require("express");
 const Settings = require("../models/Settings");
-const { requireAdmin } = require("../middleware/auth");
+const { requireOwner } = require("../middleware/auth");
+const { upload, uploadAll } = require("../config/cloudinary");
 
 const router = express.Router();
 
@@ -35,11 +36,30 @@ router.get("/", async (req, res) => {
   }
 });
 
-// PUT /api/settings — admin only, updates whichever fields are sent
-router.put("/", requireAdmin, async (req, res) => {
+// PUT /api/settings — owner only, updates whichever fields are sent.
+// (Previously requireAdmin — tightened so staff accounts genuinely can't
+// change business settings via the API, not just hidden from them in the UI.)
+router.put("/", requireOwner, async (req, res) => {
   try {
     const settings = await getOrCreateSettings();
     Object.assign(settings, req.body);
+    await settings.save();
+    res.json(settings);
+  } catch (err) {
+    res.status(500).json({ error: "Server error", details: err.message });
+  }
+});
+
+// POST /api/settings/hero-image — owner only, uploads the homepage hero
+// photo to Cloudinary and saves its URL. Separate from PUT above since
+// this one handles a file upload (multipart), not plain JSON.
+router.post("/hero-image", requireOwner, upload.single("image"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "No image file received" });
+
+    const [url] = await uploadAll([req.file]);
+    const settings = await getOrCreateSettings();
+    settings.heroImageUrl = url;
     await settings.save();
     res.json(settings);
   } catch (err) {

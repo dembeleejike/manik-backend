@@ -6,8 +6,8 @@ require("dotenv").config();
 const mongoose = require("mongoose");
 const Admin = require("./models/Admin");
 
-const EMAIL = "eugeneejike51@gmail.com"; // TODO: real login email
-const PASSWORD = "Caporano"; // TODO: real password — change this before running
+const EMAIL = "owner@manik.com"; // TODO: real login email
+const PASSWORD = "changeme123"; // TODO: real password — change this before running
 const NAME = "MANIK Admin";
 
 async function run() {
@@ -19,7 +19,7 @@ async function run() {
     process.exit(0);
   }
 
-  await Admin.create({ email: EMAIL, password: PASSWORD, name: NAME });
+  await Admin.create({ email: EMAIL, password: PASSWORD, name: NAME, role: "owner" });
   console.log(`Admin created: ${EMAIL}`);
   console.log("You can now log in at POST /api/auth/login with this email and password.");
   process.exit(0);

@@ -16,6 +16,7 @@ const settingsSchema = new mongoose.Schema(
     hoursSunday: { type: String, default: "Closed" },
     aboutText: { type: String, default: "" },
     mapEmbedUrl: { type: String, default: "" }, // Google Maps embed iframe URL
+    heroImageUrl: { type: String, default: "" }, // homepage hero photo
     stats: {
       years: { type: String, default: "" },
       projects: { type: String, default: "" },

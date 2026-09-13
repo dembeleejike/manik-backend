@@ -2,11 +2,11 @@ const express = require("express");
 const Sale = require("../models/Sale");
 const Purchase = require("../models/Purchase");
 const Expense = require("../models/Expense");
-const { requireAdmin } = require("../middleware/auth");
+const { requireOwner } = require("../middleware/auth");
 
 const router = express.Router();
 
-router.use(requireAdmin);
+router.use(requireOwner);
 
 // Turns a period keyword (or explicit from/to) into a concrete date range.
 function getDateRange(period, from, to) {

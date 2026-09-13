@@ -1,10 +1,10 @@
 const express = require("express");
 const Expense = require("../models/Expense");
-const { requireAdmin } = require("../middleware/auth");
+const { requireOwner } = require("../middleware/auth");
 
 const router = express.Router();
 
-router.use(requireAdmin);
+router.use(requireOwner);
 
 // GET /api/expenses — optionally ?from=&to=
 router.get("/", async (req, res) => {

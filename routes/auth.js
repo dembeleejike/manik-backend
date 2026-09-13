@@ -1,7 +1,7 @@
 const express = require("express");
 const jwt = require("jsonwebtoken");
 const Admin = require("../models/Admin");
-const { requireAdmin } = require("../middleware/auth");
+const { requireAdmin, requireOwner } = require("../middleware/auth");
 const { loginLimiter } = require("../middleware/rateLimiters");
 
 const router = express.Router();
@@ -25,30 +25,29 @@ router.post("/login", loginLimiter, async (req, res) => {
     }
 
     const token = jwt.sign(
-      { id: admin._id, email: admin.email },
+      { id: admin._id, email: admin.email, role: admin.role },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
 
-    res.json({ token, admin: { id: admin._id, email: admin.email, name: admin.name } });
+    res.json({ token, admin: { id: admin._id, email: admin.email, name: admin.name, role: admin.role } });
   } catch (err) {
     res.status(500).json({ error: "Server error", details: err.message });
   }
 });
 
-// GET /api/auth/admins — list every admin account. Requires being logged in
-// already, so only someone who already has access can see who else has it.
-router.get("/admins", requireAdmin, async (req, res) => {
+// GET /api/auth/admins — owner only, lists every admin account
+router.get("/admins", requireOwner, async (req, res) => {
   const admins = await Admin.find().select("-password").sort({ createdAt: 1 });
   res.json(admins);
 });
 
-// POST /api/auth/admins — create a new admin login. Requires being logged in
-// already — this is what powers the "Add Admin" screen in the dashboard,
-// used on presentation day to let the owner set up his own account.
-router.post("/admins", requireAdmin, async (req, res) => {
+// POST /api/auth/admins — owner only, creates a new login with a chosen role.
+// This is what powers the "Add Admin" screen — used on presentation day to
+// let the business owner set up his own (owner-level) account.
+router.post("/admins", requireOwner, async (req, res) => {
   try {
-    const { email, password, name } = req.body;
+    const { email, password, name, role } = req.body;
     if (!email || !password) {
       return res.status(400).json({ error: "Email and password are required" });
     }
@@ -61,16 +60,19 @@ router.post("/admins", requireAdmin, async (req, res) => {
       return res.status(409).json({ error: "An admin with this email already exists" });
     }
 
-    const admin = await Admin.create({ email, password, name: name || "Admin" });
-    res.status(201).json({ id: admin._id, email: admin.email, name: admin.name });
+    const admin = await Admin.create({
+      email, password, name: name || "Admin",
+      role: role === "owner" ? "owner" : "staff",
+    });
+    res.status(201).json({ id: admin._id, email: admin.email, name: admin.name, role: admin.role });
   } catch (err) {
     res.status(500).json({ error: "Server error", details: err.message });
   }
 });
 
-// DELETE /api/auth/admins/:id — remove an admin login. An admin can't delete
-// their own account this way, to avoid accidentally locking everyone out.
-router.delete("/admins/:id", requireAdmin, async (req, res) => {
+// DELETE /api/auth/admins/:id — owner only. An admin can't delete their own
+// account this way, to avoid accidentally locking everyone out.
+router.delete("/admins/:id", requireOwner, async (req, res) => {
   if (req.params.id === req.admin.id) {
     return res.status(400).json({ error: "You can't remove your own account while logged in as it" });
   }

@@ -1,11 +1,11 @@
 const express = require("express");
 const Customer = require("../models/Customer");
 const Sale = require("../models/Sale");
-const { requireAdmin } = require("../middleware/auth");
+const { requireOwner } = require("../middleware/auth");
 
 const router = express.Router();
 
-router.use(requireAdmin);
+router.use(requireOwner);
 
 // GET /api/customers — every customer, with totals computed from their sales
 router.get("/", async (req, res) => {

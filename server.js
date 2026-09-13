@@ -14,6 +14,7 @@ const saleRoutes = require("./routes/sales");
 const expenseRoutes = require("./routes/expenses");
 const reportRoutes = require("./routes/reports");
 const customerRoutes = require("./routes/customers");
+const exportRoutes = require("./routes/export");
 
 const app = express();
 
@@ -35,6 +36,7 @@ app.use("/api/sales", saleRoutes);
 app.use("/api/expenses", expenseRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/customers", customerRoutes);
+app.use("/api/export", exportRoutes);
 
 // Catch-all error handler — keeps a single bad request from crashing the whole server
 app.use((err, req, res, next) => {
