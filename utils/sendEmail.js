@@ -40,4 +40,22 @@ async function sendQuoteNotification(quote) {
   }
 }
 
-module.exports = { sendQuoteNotification };
+async function sendLowStockAlert(product) {
+  const html = `
+    <h2>Low stock alert — MANIK</h2>
+    <p><strong>${product.name}</strong> (${product.ref}) is down to <strong>${product.quantity}</strong> units — at or below the threshold of ${product.lowStockThreshold}.</p>
+    <p>Consider restocking soon.</p>
+  `;
+  try {
+    await transporter.sendMail({
+      from: `"MANIK System" <${process.env.EMAIL_USER}>`,
+      to: process.env.OWNER_EMAIL,
+      subject: `Low stock: ${product.name}`,
+      html,
+    });
+  } catch (err) {
+    console.error("Failed to send low stock alert email:", err.message);
+  }
+}
+
+module.exports = { sendQuoteNotification, sendLowStockAlert };

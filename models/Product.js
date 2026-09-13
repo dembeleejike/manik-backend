@@ -13,6 +13,10 @@ const productSchema = new mongoose.Schema(
       enum: ["In stock", "Low stock", "Made to order", "Out of stock"],
       default: "In stock",
     },
+    quantity: { type: Number, default: 0 }, // real stock count — updated automatically by purchases/sales
+    lowStockThreshold: { type: Number, default: 5 }, // below this, status can be flagged Low stock
+    costPrice: { type: Number, default: 0 }, // what MANIK pays per unit — used for stock value & profit calculations
+    sellingPrice: { type: Number, default: 0 }, // default selling price — can be overridden per sale
     images: [{ type: String }], // Cloudinary URLs
     isFeatured: { type: Boolean, default: false },
   },

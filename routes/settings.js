@@ -9,7 +9,18 @@ const router = express.Router();
 async function getOrCreateSettings() {
   let settings = await Settings.findOne();
   if (!settings) {
-    settings = await Settings.create({});
+    settings = await Settings.create({
+      businessName: "MANIK GLOBAL TRUST LTD.",
+      tagline: "General Trading and Marketing",
+      phone: "08060984868",
+      phone2: "07026110486",
+      whatsapp: "2348060984868",
+      locations: [
+        { label: "Head Office", address: "No. 23 Ifelodun Street, Dopemu, Agege, Lagos" },
+        { label: "Branch Office", address: "Block 2, Shop No. 6, Aluminium Village, Kaduna/Lokoja Express Road, Dumez, Abuja" },
+        { label: "Gauraka Branch", address: "Gauraka, Niger State" },
+      ],
+    });
   }
   return settings;
 }

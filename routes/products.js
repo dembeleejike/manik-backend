@@ -31,7 +31,7 @@ router.get("/:id", async (req, res) => {
 // POST /api/products — admin only, with optional image uploads (field name: "images")
 router.post("/", requireAdmin, upload.array("images", 6), async (req, res) => {
   try {
-    const { name, ref, category, description, status, colors, specs } = req.body;
+    const { name, ref, category, description, status, colors, specs, quantity, costPrice, sellingPrice, lowStockThreshold } = req.body;
     if (!name || !ref || !category) {
       return res.status(400).json({ error: "name, ref and category are required" });
     }
@@ -46,6 +46,10 @@ router.post("/", requireAdmin, upload.array("images", 6), async (req, res) => {
       status,
       colors: colors ? JSON.parse(colors) : [],
       specs: specs ? JSON.parse(specs) : [],
+      quantity: quantity || 0,
+      costPrice: costPrice || 0,
+      sellingPrice: sellingPrice || 0,
+      lowStockThreshold: lowStockThreshold || 5,
       images,
     });
 
