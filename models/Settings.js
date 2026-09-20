@@ -11,11 +11,10 @@ const settingsSchema = new mongoose.Schema(
     phone2: { type: String, default: "" }, // the business has two contact lines
     whatsapp: { type: String, default: "" },
     email: { type: String, default: "" },
-    locations: [{ label: { type: String }, address: { type: String } }], // multiple offices/branches
+    locations: [{ label: { type: String }, address: { type: String }, mapEmbedUrl: { type: String, default: "" } }], // multiple offices/branches, each with its own map
     hours: { type: String, default: "Mon – Sat, 8am – 6pm" },
     hoursSunday: { type: String, default: "Closed" },
     aboutText: { type: String, default: "" },
-    mapEmbedUrl: { type: String, default: "" }, // Google Maps embed iframe URL
     heroImageUrl: { type: String, default: "" }, // homepage hero photo
     stats: {
       years: { type: String, default: "" },

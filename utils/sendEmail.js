@@ -58,4 +58,18 @@ async function sendLowStockAlert(product) {
   }
 }
 
-module.exports = { sendQuoteNotification, sendLowStockAlert };
+async function sendBackupEmail(jsonBuffer, filename) {
+  try {
+    await transporter.sendMail({
+      from: `"MANIK System" <${process.env.EMAIL_USER}>`,
+      to: process.env.OWNER_EMAIL,
+      subject: `MANIK backup — ${new Date().toLocaleDateString()}`,
+      text: "Your automatic daily backup is attached. Keep this email as a second safety copy alongside the one stored in Cloudinary.",
+      attachments: [{ filename, content: jsonBuffer, contentType: "application/json" }],
+    });
+  } catch (err) {
+    console.error("Failed to send backup email:", err.message);
+  }
+}
+
+module.exports = { sendQuoteNotification, sendLowStockAlert, sendBackupEmail };

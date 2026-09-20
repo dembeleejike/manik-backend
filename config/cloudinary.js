@@ -40,4 +40,18 @@ async function uploadAll(files = []) {
   return Promise.all(files.map((f) => uploadBufferToCloudinary(f.buffer)));
 }
 
-module.exports = { cloudinary, upload, uploadAll };
+// Uploads a raw file (not an image) to Cloudinary — used for backup files.
+function uploadRawBuffer(buffer, filename) {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      { folder: "manik/backups", resource_type: "raw", public_id: filename, overwrite: true },
+      (err, result) => {
+        if (err) return reject(err);
+        resolve(result.secure_url);
+      }
+    );
+    stream.end(buffer);
+  });
+}
+
+module.exports = { cloudinary, upload, uploadAll, uploadRawBuffer };
