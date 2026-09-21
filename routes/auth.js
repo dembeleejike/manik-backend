@@ -6,22 +6,26 @@ const { loginLimiter } = require("../middleware/rateLimiters");
 
 const router = express.Router();
 
-// POST /api/auth/login
+// POST /api/auth/login — "identifier" can be an email OR a phone number,
+// since not every admin has an email address.
 router.post("/login", loginLimiter, async (req, res) => {
   try {
-    const { email, password } = req.body;
-    if (!email || !password) {
-      return res.status(400).json({ error: "Email and password are required" });
+    const { identifier, password } = req.body;
+    if (!identifier || !password) {
+      return res.status(400).json({ error: "Email/phone and password are required" });
     }
 
-    const admin = await Admin.findOne({ email: email.toLowerCase() });
+    const cleaned = identifier.trim().toLowerCase();
+    const admin = await Admin.findOne({
+      $or: [{ email: cleaned }, { phone: identifier.trim() }],
+    });
     if (!admin) {
-      return res.status(401).json({ error: "Invalid email or password" });
+      return res.status(401).json({ error: "Invalid login or password" });
     }
 
     const isMatch = await admin.comparePassword(password);
     if (!isMatch) {
-      return res.status(401).json({ error: "Invalid email or password" });
+      return res.status(401).json({ error: "Invalid login or password" });
     }
 
     const token = jwt.sign(
@@ -30,7 +34,10 @@ router.post("/login", loginLimiter, async (req, res) => {
       { expiresIn: "7d" }
     );
 
-    res.json({ token, admin: { id: admin._id, email: admin.email, name: admin.name, role: admin.role } });
+    res.json({
+      token,
+      admin: { id: admin._id, email: admin.email, phone: admin.phone, name: admin.name, role: admin.role },
+    });
   } catch (err) {
     res.status(500).json({ error: "Server error", details: err.message });
   }
@@ -42,29 +49,37 @@ router.get("/admins", requireOwner, async (req, res) => {
   res.json(admins);
 });
 
-// POST /api/auth/admins — owner only, creates a new login with a chosen role.
-// This is what powers the "Add Admin" screen — used on presentation day to
-// let the business owner set up his own (owner-level) account.
+// POST /api/auth/admins — owner only, creates a new login with a chosen
+// role. Needs EITHER an email OR a phone number, not necessarily both —
+// for admins who don't have an email address.
 router.post("/admins", requireOwner, async (req, res) => {
   try {
-    const { email, password, name, role } = req.body;
-    if (!email || !password) {
-      return res.status(400).json({ error: "Email and password are required" });
+    const { email, phone, password, name, role } = req.body;
+    if (!email && !phone) {
+      return res.status(400).json({ error: "An email or phone number is required" });
+    }
+    if (!password) {
+      return res.status(400).json({ error: "Password is required" });
     }
     if (password.length < 6) {
       return res.status(400).json({ error: "Password must be at least 6 characters" });
     }
 
-    const existing = await Admin.findOne({ email: email.toLowerCase() });
+    const orConditions = [];
+    if (email) orConditions.push({ email: email.toLowerCase() });
+    if (phone) orConditions.push({ phone: phone.trim() });
+    const existing = await Admin.findOne({ $or: orConditions });
     if (existing) {
-      return res.status(409).json({ error: "An admin with this email already exists" });
+      return res.status(409).json({ error: "An admin with this email or phone already exists" });
     }
 
     const admin = await Admin.create({
-      email, password, name: name || "Admin",
+      email: email || undefined,
+      phone: phone || undefined,
+      password, name: name || "Admin",
       role: role === "owner" ? "owner" : "staff",
     });
-    res.status(201).json({ id: admin._id, email: admin.email, name: admin.name, role: admin.role });
+    res.status(201).json({ id: admin._id, email: admin.email, phone: admin.phone, name: admin.name, role: admin.role });
   } catch (err) {
     res.status(500).json({ error: "Server error", details: err.message });
   }
