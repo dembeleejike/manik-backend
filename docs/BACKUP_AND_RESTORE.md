@@ -40,5 +40,5 @@ Keep backups somewhere safe (they contain private customer and money records).
 The schedule lives in `.github/workflows/nightly-backup.yml` (runs at 02:00 Nigerian time and retries while a sleeping host wakes up). In the GitHub repo add two Actions secrets — `API_URL` (your backend address, no trailing slash) and `BACKUP_SECRET` (same value as on the server) — then open the **Actions** tab, choose *Nightly backup* and press **Run workflow** once to test it. A green tick means the owner's inbox should have the email.
 
 ## Setting it up (developer)
-Environment variables on the server: `OWNER_EMAIL`, `EMAIL_USER`, `EMAIL_PASS` (for emailed backups), `BACKUP_SECRET` (at least 16 characters; same value in the GitHub Action secret), Cloudinary keys.
+Environment variables on the server: `OWNER_EMAIL`, `EMAIL_USER`, `EMAIL_APP_PASSWORD` (for emailed backups), `BACKUP_SECRET` (at least 16 characters; same value in the GitHub Action secret), Cloudinary keys.
 After upgrading an existing database, run `npm run migrate` once.

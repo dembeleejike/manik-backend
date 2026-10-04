@@ -11,19 +11,28 @@ const base = `http://127.0.0.1:${PORT}`;
 let server;
 
 test.before(async () => {
+  let output = "";
+  let exited = null;
   server = spawn(process.execPath, [path.join(__dirname, "..", "server.js")], {
     env: {
       ...process.env, PORT: String(PORT), JWT_SECRET: "test-secret-test-secret-123",
-      MONGODB_URI: "mongodb://127.0.0.1:1/none", BACKUP_SECRET: "backup-secret-1234567890",
-      CORS_ORIGINS: "https://site.example",
+      MONGODB_URI: "mongodb://127.0.0.1:1/none", MANIK_SKIP_DB: "1", BACKUP_SECRET: "backup-secret-1234567890",
+      CORS_ORIGINS: "https://site.example", NODE_ENV: "test", KEEP_ALIVE: "off",
     },
-    stdio: "ignore",
+    stdio: ["ignore", "pipe", "pipe"],
   });
-  for (let i = 0; i < 50; i++) {
+  server.stdout.on("data", (d) => { output += d; });
+  server.stderr.on("data", (d) => { output += d; });
+  server.on("exit", (code) => { exited = code; });
+
+  // Starting Node + loading every module can be slow on a busy Windows machine
+  // (antivirus scans, other test files running at the same time), so wait up to 60s.
+  for (let i = 0; i < 300; i++) {
+    if (exited !== null) throw new Error(`The server exited immediately (code ${exited}). Its output:\n${output}`);
     try { if ((await fetch(base + "/")).ok) return; } catch { /* not up yet */ }
     await new Promise((r) => setTimeout(r, 200));
   }
-  throw new Error("server did not start");
+  throw new Error(`The server did not start within 60 seconds. Its output so far:\n${output || "(nothing)"}`);
 });
 test.after(() => server && server.kill());
 

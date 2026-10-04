@@ -44,7 +44,7 @@ router.get("/backup", async (req, res) => {
 // JSON file for restoring + an Excel copy for reading).
 router.post("/email-backup", async (req, res) => {
   if (!process.env.OWNER_EMAIL || !process.env.EMAIL_USER) {
-    return res.status(503).json({ error: "Email isn't set up on the server yet (OWNER_EMAIL / EMAIL_USER / EMAIL_PASS)." });
+    return res.status(503).json({ error: "Email isn't set up on the server yet (OWNER_EMAIL / EMAIL_USER / EMAIL_APP_PASSWORD)." });
   }
   const backup = await collectBackup();
   const attachments = [

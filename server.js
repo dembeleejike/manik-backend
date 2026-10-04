@@ -138,4 +138,7 @@ process.on("unhandledRejection", (reason) => {
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`MANIK API running on port ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`MANIK API running on port ${PORT}`);
+  require("./utils/keepAlive").start(); // stops the free host from putting the API to sleep
+});

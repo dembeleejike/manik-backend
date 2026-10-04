@@ -22,9 +22,19 @@ Sign-in uses a secure cookie. Browsers — iPhones especially — refuse to keep
 | `BACKUP_SECRET` | 16+ random characters; same value as the GitHub secret |
 | `CORS_ORIGINS` | the **public website** address(es), comma-separated. Not needed for the admin when it uses the `/api` forwarding |
 | `TRUST_PROXY` | number of proxies in front of the app: `1` normally, **`2`** when the admin forwards through Vercel to Render. Affects only per-visitor rate limits |
-| `OWNER_EMAIL`, `EMAIL_USER`, `EMAIL_PASS` | backup and alert emails |
+| `OWNER_EMAIL`, `EMAIL_USER`, `EMAIL_APP_PASSWORD` | backup and alert emails |
 | `CLOUDINARY_*` | photo storage and private backups |
-| `NODE_ENV` | `production` on the live server (makes cookies HTTPS-only) |
+| `NODE_ENV` | `production` on the live server (makes cookies HTTPS-only **and switches on the keep-alive**) |
+| `KEEP_ALIVE_URL`, `KEEP_ALIVE_MINUTES`, `KEEP_ALIVE` | optional — see "Keeping the backend awake" below |
+
+## Keeping the backend awake
+A free Render service falls asleep after about 15 minutes without visitors, and the next visitor waits up to a minute (sign-in through the admin can time out). The backend now **visits its own address every 10 minutes** so it never goes idle. There is nothing to set up: with `NODE_ENV=production` on Render it turns itself on (Render supplies the address automatically). In the Render **Logs** you will see `Keep-alive on: visiting https://… every 10 minutes` right after each start.
+
+- To use a custom domain, set `KEEP_ALIVE_URL=https://api.yourshop.com`.
+- On a paid plan that never sleeps, set `KEEP_ALIVE=off`.
+- A free service that is awake all month uses about 744 of Render's 750 free hours, so keep **one** free service per account on this.
+- Extra safety (optional): add a free monitor at uptimerobot.com for `https://YOUR-BACKEND/` every 5 minutes. It also wakes the service if Render restarts it.
+- The nightly backup workflow also wakes the service once a day.
 
 ## First-time and upgrade steps
 1. `npm install`

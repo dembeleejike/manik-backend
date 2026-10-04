@@ -25,6 +25,26 @@ async function run() {
   await Admin.syncIndexes();
   console.log("Admin indexes rebuilt.");
 
+  // 1b. Admin phone numbers: logins created by an earlier version may have the phone
+  // saved exactly as typed ("+234 806 098 4868"). Sign-in looks phones up in the
+  // standard format (08060984868), so put them all in that format.
+  let adminsFixed = 0;
+  const seenAdminPhones = new Map();
+  for (const a of await Admin.find({ phone: { $exists: true, $ne: null } }).sort({ createdAt: 1 })) {
+    const n = normalizePhone(a.phone);
+    if (!n) continue;
+    if (seenAdminPhones.has(n)) {
+      console.warn(`WARNING: two admins share the phone number ${n} (${seenAdminPhones.get(n)} and ${a.name}). Remove one from the Admins page.`);
+      continue;
+    }
+    seenAdminPhones.set(n, a.name);
+    if (n !== a.phone) {
+      await Admin.updateOne({ _id: a._id }, { phone: n }); // direct update: leaves the password untouched
+      adminsFixed++;
+    }
+  }
+  console.log(`Admin phone numbers standardised: ${adminsFixed}`);
+
   // 2. Sales phones
   let salesFixed = 0;
   for (const sale of await Sale.find({ customerPhone: { $ne: "" } })) {
