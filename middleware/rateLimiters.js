@@ -52,4 +52,15 @@ const apiLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-module.exports = { loginLimiter, loginIpLimiter, quoteLimiter, apiLimiter };
+// "Email a backup" sends every customer and money record out of the system, so it
+// is limited per person: 6 per hour is plenty for real use.
+const backupEmailLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 6,
+  keyGenerator: (req) => (req.admin ? "admin:" + req.admin.id : "ip:" + ipKeyGenerator(req.ip)),
+  message: { error: "You've requested several backups in the last hour. Please try again later." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+module.exports = { loginLimiter, loginIpLimiter, quoteLimiter, apiLimiter, backupEmailLimiter };

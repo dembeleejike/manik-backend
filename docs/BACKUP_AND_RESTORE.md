@@ -8,14 +8,14 @@ Products, categories, sales, purchases, expenses, customers, quote requests and 
 ## Three safety copies, automatically
 Every night a scheduled job (`POST /api/backup/run`, protected by `BACKUP_SECRET`) creates a backup and:
 1. stores it **privately** in Cloudinary (not reachable by a public link), and
-2. emails the owner two files: the backup (`.json`, used to restore) and an Excel copy (`.xlsx`, to read).
+2. emails **every owner account** that has an email address two files: the backup (`.json`, used to restore) and an Excel copy (`.xlsx`, to read). (`OWNER_EMAIL`, if set, is an optional extra recipient.)
 
 If one of the two fails the other is still attempted.
 
 ## Taking a backup yourself
 *Business Settings → Backup, restore & spreadsheets*
 - **Download full backup** — saves the `.json` to your device.
-- **Email me a backup now** — emails both files to the owner address.
+- **Email a backup…** — type the email address to send it to and your own password (to confirm it's you), then press *Send backup*. Both files are emailed there. It is limited to 6 per hour and recorded in the activity log with the address it was sent to.
 
 Keep backups somewhere safe (they contain private customer and money records).
 
@@ -40,5 +40,5 @@ Keep backups somewhere safe (they contain private customer and money records).
 The schedule lives in `.github/workflows/nightly-backup.yml` (runs at 02:00 Nigerian time and retries while a sleeping host wakes up). In the GitHub repo add two Actions secrets — `API_URL` (your backend address, no trailing slash) and `BACKUP_SECRET` (same value as on the server) — then open the **Actions** tab, choose *Nightly backup* and press **Run workflow** once to test it. A green tick means the owner's inbox should have the email.
 
 ## Setting it up (developer)
-Environment variables on the server: `OWNER_EMAIL`, `EMAIL_USER`, `EMAIL_APP_PASSWORD` (for emailed backups), `BACKUP_SECRET` (at least 16 characters; same value in the GitHub Action secret), Cloudinary keys.
+Environment variables on the server: `EMAIL_USER` and `EMAIL_APP_PASSWORD` (the mailbox the system sends from — a Gmail address and an app password; recipients are chosen by people or taken from the owner accounts), `BACKUP_SECRET` (at least 16 characters; same value in the GitHub Action secret), Cloudinary keys.
 After upgrading an existing database, run `npm run migrate` once.

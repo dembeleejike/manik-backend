@@ -13,6 +13,7 @@ const { requireOwner } = require("../middleware/auth");
 const { HttpError, isId } = require("../utils/helpers");
 const { audit } = require("../utils/audit");
 const { sendBackupEmail } = require("../utils/sendEmail");
+const { mailerConfigured } = require("../utils/recipients");
 const { collectBackup } = require("./export");
 
 const router = express.Router();
@@ -90,12 +91,12 @@ router.post("/", requireOwner, async (req, res) => {
   // Safety net first: email the owner a copy of the CURRENT data, so even a
   // mistaken restore can itself be undone. Best effort — never blocks the restore.
   let safetyCopyEmailed = false;
-  if (process.env.OWNER_EMAIL && process.env.EMAIL_USER) {
+  if (mailerConfigured()) {
     try {
       const current = await collectBackup();
       safetyCopyEmailed = await sendBackupEmail(
         [{ filename: `manik-before-restore-${new Date().toISOString().slice(0, 10)}.json`, content: Buffer.from(JSON.stringify(current)), contentType: "application/json" }],
-        { manual: true }
+        { manual: true, to: req.admin.email || undefined } // the person restoring (or every owner if they have no email)
       );
     } catch (err) {
       console.error("Pre-restore safety email failed:", err.message);

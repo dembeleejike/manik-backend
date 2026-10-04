@@ -126,3 +126,13 @@ test("new routes reject bad ids and unauthenticated writes", async () => {
   assert.strictEqual((await post("/api/sales/507f1f77bcf86cd799439011/payments", { amount: 5 })).status, 401);
   assert.strictEqual((await call("/api/quotations/not-an-id")).status, 401); // auth is checked first
 });
+
+test("a wrong password never looks like an expired session (that would sign the person out)", async () => {
+  // Source check: every 401 in the routes the dashboard calls must be a real session/credential failure.
+  const fs = require("fs");
+  const auth = fs.readFileSync(path.join(__dirname, "..", "routes", "auth.js"), "utf8");
+  const changePassword = auth.slice(auth.indexOf('router.put("/password"'));
+  assert.ok(!/status\(401\)/.test(changePassword), "change-password must not answer 401");
+  const exp = fs.readFileSync(path.join(__dirname, "..", "routes", "export.js"), "utf8");
+  assert.ok(!/status\(401\)/.test(exp), "export routes must not answer 401");
+});

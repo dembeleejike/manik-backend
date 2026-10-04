@@ -147,7 +147,8 @@ router.put("/password", requireAdmin, async (req, res) => {
   }
   const admin = await Admin.findById(req.admin.id);
   if (!admin || !(await admin.comparePassword(currentPassword))) {
-    return res.status(401).json({ error: "Current password is incorrect" });
+    // 400, not 401: the dashboard treats any 401 as "session expired" and would sign the person out.
+    return res.status(400).json({ error: "Current password is incorrect" });
   }
   admin.password = newPassword;
   admin.tokenVersion = (admin.tokenVersion || 0) + 1; // signs out every other device

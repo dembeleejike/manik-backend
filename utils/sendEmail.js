@@ -1,5 +1,6 @@
 const nodemailer = require("nodemailer");
 const { escapeHtml: esc } = require("./helpers");
+const { ownerEmails, mailerConfigured } = require("./recipients");
 
 // Works with Gmail (using an App Password, not your normal password) or
 // any SMTP provider — just change the "service" / host settings below
@@ -28,9 +29,11 @@ async function sendQuoteNotification(quote) {
   `;
 
   try {
+    const to = await ownerEmails(); // every owner account's email (+ the optional OWNER_EMAIL extra)
+    if (!to.length || !mailerConfigured()) return console.warn("Quote notification not emailed: no owner email or no sending mailbox is set up.");
     await transporter.sendMail({
       from: `"MANIK Website" <${process.env.EMAIL_USER}>`,
-      to: process.env.OWNER_EMAIL, // the business owner's real inbox
+      to,
       subject: `New quote request from ${String(quote.name).replace(/[\r\n]+/g, " ")}`,
       html,
     });
@@ -48,9 +51,11 @@ async function sendLowStockAlert(product) {
     <p>Consider restocking soon.</p>
   `;
   try {
+    const to = await ownerEmails();
+    if (!to.length || !mailerConfigured()) return console.warn("Low-stock alert not emailed: no owner email or no sending mailbox is set up.");
     await transporter.sendMail({
       from: `"MANIK System" <${process.env.EMAIL_USER}>`,
-      to: process.env.OWNER_EMAIL,
+      to,
       subject: `Low stock: ${String(product.name).replace(/[\r\n]+/g, " ")}`,
       html,
     });
@@ -60,11 +65,17 @@ async function sendLowStockAlert(product) {
 }
 
 // attachments: [{ filename, content (Buffer), contentType }]. Returns true if sent.
-async function sendBackupEmail(attachments, { manual = false } = {}) {
+// `to`: one address or a list; when omitted the backup goes to every owner account.
+async function sendBackupEmail(attachments, { manual = false, to } = {}) {
   try {
+    const recipients = to ? [].concat(to) : await ownerEmails();
+    if (!recipients.length || !mailerConfigured()) {
+      console.warn("Backup not emailed: no recipient or no sending mailbox is set up.");
+      return false;
+    }
     await transporter.sendMail({
       from: `"MANIK System" <${process.env.EMAIL_USER}>`,
-      to: process.env.OWNER_EMAIL,
+      to: recipients,
       subject: `MANIK ${manual ? "backup you requested" : "daily backup"} — ${new Date().toISOString().slice(0, 10)}`,
       text:
         "Your MANIK backup is attached.\n\n" +

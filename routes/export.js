@@ -13,6 +13,10 @@ const { requireOwner } = require("../middleware/auth");
 const { DATASETS, buildFullWorkbook, LAGOS_MS } = require("../utils/datasets");
 const { buildWorkbook, buildCsv } = require("../utils/xlsx");
 const { sendBackupEmail } = require("../utils/sendEmail");
+const Admin = require("../models/Admin");
+const { isValidEmail, mailerConfigured } = require("../utils/recipients");
+const { backupEmailLimiter } = require("../middleware/rateLimiters");
+const { HttpError } = require("../utils/helpers");
 const { audit } = require("../utils/audit");
 
 const router = express.Router();
@@ -40,21 +44,31 @@ router.get("/backup", async (req, res) => {
   res.json(backup);
 });
 
-// POST /api/export/email-backup — emails the owner a backup right now (the
-// JSON file for restoring + an Excel copy for reading).
-router.post("/email-backup", async (req, res) => {
-  if (!process.env.OWNER_EMAIL || !process.env.EMAIL_USER) {
-    return res.status(503).json({ error: "Email isn't set up on the server yet (OWNER_EMAIL / EMAIL_USER / EMAIL_APP_PASSWORD)." });
+// POST /api/export/email-backup — body: { email, password }
+// Emails a backup (the .json for restoring + an Excel copy for reading) to the
+// address the person types. Because this sends every customer and money record
+// out of the system, the person must also re-enter their own password.
+router.post("/email-backup", backupEmailLimiter, async (req, res) => {
+  const email = typeof req.body.email === "string" ? req.body.email.trim().toLowerCase() : "";
+  if (!isValidEmail(email)) throw new HttpError(400, "Enter a valid email address to send the backup to.");
+  if (typeof req.body.password !== "string" || !req.body.password) throw new HttpError(400, "Enter your password to confirm it's you.");
+  if (!mailerConfigured()) {
+    return res.status(503).json({ error: "The system's sending mailbox isn't set up yet. Add EMAIL_USER and EMAIL_APP_PASSWORD in the server settings." });
   }
+
+  // 400 (not 401) on purpose: the dashboard treats a 401 as "session expired" and signs you out.
+  const me = await Admin.findById(req.admin.id);
+  if (!me || !(await me.comparePassword(req.body.password))) throw new HttpError(400, "That password isn't correct.");
+
   const backup = await collectBackup();
   const attachments = [
     { filename: `manik-backup-${today()}.json`, content: Buffer.from(JSON.stringify(backup, null, 2)), contentType: "application/json" },
     { filename: `manik-records-${today()}.xlsx`, content: await buildFullWorkbook(), contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" },
   ];
-  const sent = await sendBackupEmail(attachments, { manual: true });
-  if (!sent) return res.status(502).json({ error: "The email couldn't be sent. Check the server's email settings." });
-  audit(req, "export.email", "Emailed a backup to the owner");
-  res.json({ message: `Backup emailed to ${process.env.OWNER_EMAIL}` });
+  const sent = await sendBackupEmail(attachments, { manual: true, to: email });
+  if (!sent) return res.status(502).json({ error: "The email couldn't be sent. Check the sending mailbox settings (app password) on the server." });
+  audit(req, "export.email", `Emailed a backup to ${email}`);
+  res.json({ message: `Backup emailed to ${email}` });
 });
 
 // GET /api/export/:dataset.:format — spreadsheets.

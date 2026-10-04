@@ -22,7 +22,8 @@ Sign-in uses a secure cookie. Browsers — iPhones especially — refuse to keep
 | `BACKUP_SECRET` | 16+ random characters; same value as the GitHub secret |
 | `CORS_ORIGINS` | the **public website** address(es), comma-separated. Not needed for the admin when it uses the `/api` forwarding |
 | `TRUST_PROXY` | number of proxies in front of the app: `1` normally, **`2`** when the admin forwards through Vercel to Render. Affects only per-visitor rate limits |
-| `OWNER_EMAIL`, `EMAIL_USER`, `EMAIL_APP_PASSWORD` | backup and alert emails |
+| `EMAIL_USER`, `EMAIL_APP_PASSWORD` | the mailbox the system **sends** from (Gmail address + app password). Required for any email |
+| `OWNER_EMAIL` | optional extra recipient(s); backups and alerts already go to every owner account's email |
 | `CLOUDINARY_*` | photo storage and private backups |
 | `NODE_ENV` | `production` on the live server (makes cookies HTTPS-only **and switches on the keep-alive**) |
 | `KEEP_ALIVE_URL`, `KEEP_ALIVE_MINUTES`, `KEEP_ALIVE` | optional — see "Keeping the backend awake" below |

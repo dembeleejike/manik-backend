@@ -87,6 +87,11 @@ router.post("/", async (req, res) => {
       quotation = await Quotation.create({ ...fields, number: `Q-${year}-${String(n).padStart(4, "0")}`, createdBy: req.admin.id });
     } catch (err) {
       if (err.code !== 11000) throw err;
+      // That number is already used (e.g. after restoring a backup into a fresh database,
+      // the counter starts from 0 again). Move the counter past the highest number in use.
+      const last = await Quotation.findOne({ number: new RegExp(`^Q-${year}-`) }).sort({ number: -1 }).select("number");
+      const highest = last ? parseInt(last.number.split("-")[2], 10) || 0 : 0;
+      await Counter.updateOne({ key: `quotation-${year}` }, { $max: { seq: highest } });
     }
   }
   if (!quotation) throw new HttpError(500, "Couldn't allocate a quotation number. Please try again.");

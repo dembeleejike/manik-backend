@@ -24,7 +24,8 @@ Then fill in `.env` with:
   ```
 - **CLOUDINARY_CLOUD_NAME / API_KEY / API_SECRET** — from your Cloudinary dashboard homepage.
 - **EMAIL_USER / EMAIL_APP_PASSWORD** — a Gmail address to send FROM. The app password (not your real Gmail password) comes from [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) — requires 2-Step Verification turned on first.
-- **OWNER_EMAIL** — the real inbox that should receive quote notifications.
+- **EMAIL_USER / EMAIL_APP_PASSWORD** — the mailbox the system sends from (a Gmail address and an app password).
+- **OWNER_EMAIL** — optional extra recipient(s). Backups, new-quote alerts and low-stock alerts go to the email of every **owner account**; this only adds more addresses.
 
 ## 3. Create the admin login
 
@@ -84,7 +85,7 @@ Runs on `http://localhost:5000` by default. Visit `http://localhost:5000/` — y
 | PUT | `/api/quotes/:id` | admin | Update quote status |
 | DELETE | `/api/quotes/:id` | admin | Delete a quote |
 | GET | `/api/export/backup` | owner | Download the full backup (.json) |
-| POST | `/api/export/email-backup` | owner | Email the owner a backup now (.json + Excel) |
+| POST | `/api/export/email-backup` | owner | Email a backup (.json + Excel) to the address in the body `{ email, password }`; the password re-confirms the person. Limited to 6 per hour |
 | GET | `/api/export/:dataset.:format` | owner | Spreadsheet export. dataset: `products` `sales` `purchases` `expenses` `customers` `quotes` `all`; format: `xlsx` or `csv`; optional `?from=YYYY-MM-DD&to=YYYY-MM-DD` |
 | POST | `/api/restore` | owner | Restore from a backup file. `{ backup, dryRun }` — `dryRun: true` only previews |
 | POST | `/api/auth/logout` | — | Clear the session cookie |
