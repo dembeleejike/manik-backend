@@ -28,13 +28,33 @@ Then fill in `.env` with:
 
 ## 3. Create the admin login
 
-Open `createAdmin.js`, change the `EMAIL` and `PASSWORD` at the top to real values, then run:
+Pass the owner's login on the command line (an email **or** a phone number, a password of at least 8 characters, and a name). Nothing is written into any file:
 
 ```bash
-npm run create-admin
+node createAdmin.js owner@example.com "a-long-passphrase" "Owner Name"
+# or with a phone number:
+node createAdmin.js 08060984868 "a-long-passphrase" "Owner Name"
 ```
 
-This creates the one login the owner will use for the dashboard. You can delete or clear the password out of `createAdmin.js` afterward.
+Admins sign in with their email or phone number. More logins (owner or staff) are added from the dashboard's Admins page.
+
+### Upgrading an existing database
+
+If you already have data from an earlier version, run this **once** after deploying (it is safe to re-run). It rebuilds the admin indexes so phone logins work, standardises phone numbers so the same customer is never split in two, and corrects product stock statuses:
+
+```bash
+npm run migrate
+```
+
+If your old owner account was created before roles existed: `node promoteToOwner.js you@example.com`.
+
+## Security settings
+
+- **CORS_ORIGINS** — set this to your website and admin dashboard URLs (comma-separated). Without it the API accepts requests from any site.
+- **JWT_SECRET** and **BACKUP_SECRET** must each be at least 16 random characters; the server refuses to start without a valid `JWT_SECRET`.
+- Behind a hosting proxy (Render etc.) the app trusts one proxy hop so rate limits count each visitor separately.
+- Backups are stored **privately** in Cloudinary (open them from the Cloudinary console) and a copy is emailed to the owner. The backup link is no longer returned by the API.
+- Public product responses hide cost price, selling price and stock counts; logged-in admins still see them.
 
 ## 4. Run it
 
@@ -48,7 +68,8 @@ Runs on `http://localhost:5000` by default. Visit `http://localhost:5000/` — y
 
 | Method | Route | Auth | Purpose |
 |---|---|---|---|
-| POST | `/api/auth/login` | — | Admin login, returns a token |
+| POST | `/api/auth/login` | — | Admin login (`identifier` = email or phone, `password`), returns a token |
+| PUT | `/api/auth/password` | admin | Change your own password |
 | GET | `/api/products` | — | List products (public) |
 | GET | `/api/products/:id` | — | Single product (public) |
 | POST | `/api/products` | admin | Create product (with images) |
@@ -62,6 +83,23 @@ Runs on `http://localhost:5000` by default. Visit `http://localhost:5000/` — y
 | GET | `/api/quotes` | admin | View all quote requests |
 | PUT | `/api/quotes/:id` | admin | Update quote status |
 | DELETE | `/api/quotes/:id` | admin | Delete a quote |
+| GET | `/api/export/backup` | owner | Download the full backup (.json) |
+| POST | `/api/export/email-backup` | owner | Email the owner a backup now (.json + Excel) |
+| GET | `/api/export/:dataset.:format` | owner | Spreadsheet export. dataset: `products` `sales` `purchases` `expenses` `customers` `quotes` `all`; format: `xlsx` or `csv`; optional `?from=YYYY-MM-DD&to=YYYY-MM-DD` |
+| POST | `/api/restore` | owner | Restore from a backup file. `{ backup, dryRun }` — `dryRun: true` only previews |
+| POST | `/api/auth/logout` | — | Clear the session cookie |
+| GET | `/api/auth/me` | admin | Who is signed in |
+| POST | `/api/sales/:id/payments` | admin | Record a later payment on a sale (`amount`, `method`, `date`, `note`) |
+| DELETE | `/api/sales/:id/payments/:paymentId` | owner | Undo a payment |
+| GET/POST | `/api/quotations` | admin | List / create a priced quotation |
+| PUT | `/api/quotations/:id` | admin | Edit (while Draft / Sent / Accepted) |
+| PUT | `/api/quotations/:id/status` | admin | Draft / Sent / Accepted / Declined |
+| POST | `/api/quotations/:id/convert` | admin | Turn the stock items into sales (`deposit`, `paymentMethod`) |
+| DELETE | `/api/quotations/:id` | owner | Delete |
+| GET | `/api/stocktake` | admin | History of stock counts and corrections |
+| POST | `/api/stocktake` | admin | Save a stock count `{ counts: [{ product, counted }], note }` |
+| GET | `/api/audit` | owner | Activity log. Optional `?q=&action=&from=&to=&limit=` |
+| POST | `/api/backup/run` | backup secret | Nightly backup (called by the scheduled GitHub Action) |
 
 Admin routes need a header: `Authorization: Bearer <token>` (the token you get back from `/api/auth/login`).
 
@@ -79,3 +117,15 @@ Render or Railway both work well for this (Vercel is built for frontends/serverl
 - `.env` is already in `.gitignore` — never commit it.
 - CORS is currently wide open (`app.use(cors())`). Before going live, restrict it to your actual site's domain in `server.js`.
 - Passwords are hashed with bcrypt before being stored — never stored in plain text.
+
+
+## Documentation
+
+- [`docs/SETUP_AND_DEPLOYMENT.md`](docs/SETUP_AND_DEPLOYMENT.md) — environment variables, the `/api` forwarding that makes secure sign-in work, upgrade steps
+- [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) — plain-language guide for the shop owner and staff
+- [`docs/BACKUP_AND_RESTORE.md`](docs/BACKUP_AND_RESTORE.md) — how backups work, how to restore, and what a restore does and doesn't do
+- [`docs/PRIVACY_AND_DATA.md`](docs/PRIVACY_AND_DATA.md) — what data is kept, who can see it, and how it is protected
+
+## Tests
+
+`npm test` runs 16 automated checks (no database needed): phone/date helpers, the Excel/CSV writer, and the server's safety rules (login required, bad input rejected, CORS, spam trap, backup secret).

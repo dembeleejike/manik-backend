@@ -1,0 +1,27 @@
+# Runs the nightly backup: asks the API to store a private copy and email the
+# owner the backup (.json) + an Excel copy. 01:00 UTC = 02:00 in Nigeria.
+#
+# One-time setup in the GitHub repo: Settings → Secrets and variables → Actions → New repository secret
+#   API_URL        e.g. https://manik-backend-re8v.onrender.com   (no trailing slash)
+#   BACKUP_SECRET  the same value as BACKUP_SECRET on the server (16+ characters)
+name: Nightly backup
+
+on:
+  schedule:
+    - cron: "0 1 * * *"
+  workflow_dispatch: {} # lets you press "Run workflow" to test it
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run backup
+        env:
+          API_URL: ${{ secrets.API_URL }}
+          BACKUP_SECRET: ${{ secrets.BACKUP_SECRET }}
+        run: |
+          # Free hosting can be asleep; retry for a few minutes until it wakes up.
+          curl --fail --silent --show-error \
+            --retry 6 --retry-delay 30 --retry-all-errors --max-time 120 \
+            -X POST -H "x-backup-secret: $BACKUP_SECRET" \
+            "$API_URL/api/backup/run"

@@ -2,8 +2,10 @@ const express = require("express");
 const Customer = require("../models/Customer");
 const Sale = require("../models/Sale");
 const { requireOwner } = require("../middleware/auth");
+const { validateIdParam } = require("../utils/helpers");
 
 const router = express.Router();
+router.param("id", validateIdParam);
 
 router.use(requireOwner);
 
@@ -67,20 +69,18 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-// PUT /api/customers/:id — edit profile info (whatsapp, location, notes)
+// PUT /api/customers/:id — edit profile info (name, whatsapp, location, notes)
 router.put("/:id", async (req, res) => {
-  try {
-    const { name, whatsapp, location, notes } = req.body;
-    const customer = await Customer.findByIdAndUpdate(
-      req.params.id,
-      { ...(name && { name }), whatsapp, location, notes },
-      { new: true, runValidators: true }
-    );
-    if (!customer) return res.status(404).json({ error: "Customer not found" });
-    res.json(customer);
-  } catch (err) {
-    res.status(500).json({ error: "Server error", details: err.message });
+  const updates = {};
+  for (const [key, max] of [["name", 100], ["whatsapp", 30], ["location", 300], ["notes", 2000]]) {
+    if (req.body[key] === undefined) continue;
+    if (typeof req.body[key] !== "string") return res.status(400).json({ error: `${key} must be text` });
+    updates[key] = req.body[key].trim().slice(0, max);
   }
+  if (updates.name === "") delete updates.name; // a customer always keeps a name
+  const customer = await Customer.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true });
+  if (!customer) return res.status(404).json({ error: "Customer not found" });
+  res.json(customer);
 });
 
 module.exports = router;

@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { normalizePhone } = require("../utils/phone");
 
 // Purchase history, total spent, and outstanding balance are NOT stored
 // here — they're calculated on the fly from the Sale collection, so they
@@ -14,5 +15,10 @@ const customerSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+customerSchema.pre("validate", function (next) {
+  if (this.phone) this.phone = normalizePhone(this.phone); // one canonical format, so matching never misses
+  next();
+});
 
 module.exports = mongoose.model("Customer", customerSchema);

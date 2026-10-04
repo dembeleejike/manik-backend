@@ -1,90 +1,89 @@
 const express = require("express");
+const mongoose = require("mongoose");
 const Sale = require("../models/Sale");
 const Product = require("../models/Product");
-const Quote = require("../models/Quote");
-const Customer = require("../models/Customer");
-const { sendLowStockAlert } = require("../utils/sendEmail");
+const { recordSale, PAYMENT_METHODS } = require("../utils/salesService");
 const { requireAdmin, requireOwner } = require("../middleware/auth");
+const { dateFilterFromQuery, parseRangeBound } = require("../utils/dates");
+const { HttpError, validateIdParam, requireNumber, computeStatus, isId } = require("../utils/helpers");
 
+const { audit } = require("../utils/audit");
 const router = express.Router();
+router.param("id", validateIdParam);
 
 router.use(requireAdmin); // internal business data only
 
 // GET /api/sales — optionally ?from=&to=
 router.get("/", async (req, res) => {
-  const filter = {};
-  if (req.query.from || req.query.to) {
-    filter.date = {};
-    if (req.query.from) filter.date.$gte = new Date(req.query.from);
-    if (req.query.to) filter.date.$lte = new Date(req.query.to);
-  }
-  const sales = await Sale.find(filter).populate("product", "name ref").sort({ date: -1 });
+  const sales = await Sale.find(dateFilterFromQuery(req.query))
+    .select(req.admin.role === "owner" ? "" : "-costPriceAtSale") // profit margins are owner-only
+    .populate({ path: "product", select: "name ref category", populate: { path: "category", select: "name" } })
+    .sort({ date: -1 });
   res.json(sales);
 });
 
 // POST /api/sales — records a sale and decreases the product's quantity.
 // Optionally pass fromQuote: <quoteId> to link it and mark that quote Closed.
 router.post("/", async (req, res) => {
-  try {
-    const { product, quantity, unitPrice, customerName, customerPhone, paymentStatus, amountPaid, paymentMethod, date, notes, fromQuote } = req.body;
-    if (!product || !quantity || unitPrice == null) {
-      return res.status(400).json({ error: "product, quantity and unitPrice are required" });
-    }
+  const { sale } = await recordSale(req.body, req.admin.id);
+  audit(req, "sale.create", `Sale: ${sale.quantity} × ${sale.productName} for ₦${sale.totalAmount.toLocaleString("en-NG")}${sale.customerName ? " to " + sale.customerName : ""} (${sale.paymentStatus})`);
+  const saleOut = sale.toObject();
+  if (req.admin.role !== "owner") delete saleOut.costPriceAtSale;
+  res.status(201).json(saleOut);
+});
 
-    const productDoc = await Product.findById(product);
-    if (!productDoc) return res.status(404).json({ error: "Product not found" });
-
-    if (productDoc.quantity < Number(quantity)) {
-      return res.status(400).json({ error: `Not enough stock — only ${productDoc.quantity} available` });
-    }
-
-    const totalAmount = Number(quantity) * Number(unitPrice);
-    const status = paymentStatus || "Paid";
-    // If marked Paid and no explicit amount given, the full amount was paid —
-    // this keeps outstanding-balance math (totalAmount - amountPaid) correct
-    // for every sale, not just the ones where Partial/Unpaid was picked.
-    const resolvedAmountPaid = amountPaid != null && amountPaid !== ""
-      ? Number(amountPaid)
-      : (status === "Paid" ? totalAmount : 0);
-
-    const sale = await Sale.create({
-      product, productName: productDoc.name, quantity, unitPrice, totalAmount,
-      costPriceAtSale: productDoc.costPrice, customerName, customerPhone,
-      paymentStatus: status, amountPaid: resolvedAmountPaid, paymentMethod, date, notes, fromQuote,
-      recordedBy: req.admin.id,
-    });
-
-    // Track threshold-crossing for a low-stock alert (added by the caller below)
-    const wasAboveThreshold = productDoc.quantity > productDoc.lowStockThreshold;
-
-    productDoc.quantity -= Number(quantity);
-    if (productDoc.quantity === 0) productDoc.status = "Out of stock";
-    else if (productDoc.quantity <= productDoc.lowStockThreshold) productDoc.status = "Low stock";
-    await productDoc.save();
-
-    if (fromQuote) {
-      await Quote.findByIdAndUpdate(fromQuote, { status: "Closed" });
-    }
-
-    // Auto-create or update the customer record so their purchase history
-    // is trackable, without requiring a separate manual step.
-    if (customerPhone) {
-      await Customer.findOneAndUpdate(
-        { phone: customerPhone },
-        { $setOnInsert: { phone: customerPhone }, ...(customerName && { name: customerName }) },
-        { upsert: true, new: true, setDefaultsOnInsert: true }
-      );
-    }
-
-    const nowAtOrBelowThreshold = productDoc.quantity <= productDoc.lowStockThreshold;
-    if (wasAboveThreshold && nowAtOrBelowThreshold) {
-      sendLowStockAlert(productDoc); // fire-and-forget, same pattern as quote notifications
-    }
-
-    res.status(201).json(sale);
-  } catch (err) {
-    res.status(500).json({ error: "Server error", details: err.message });
+// POST /api/sales/:id/payments — a customer pays off (part of) a balance later.
+// Body: { amount, method?, date?, note? }. Can never take the sale past fully paid.
+router.post("/:id/payments", async (req, res) => {
+  const amount = Math.round(requireNumber(req.body.amount, "amount", { min: 0, exclusiveMin: true }) * 100) / 100;
+  const method = req.body.method === undefined ? "Cash" : req.body.method;
+  if (!PAYMENT_METHODS.includes(method)) throw new HttpError(400, "Invalid payment method");
+  let date = new Date();
+  if (req.body.date) {
+    date = parseRangeBound(req.body.date, "from");
+    if (!date) throw new HttpError(400, "Invalid date");
   }
+  const note = typeof req.body.note === "string" ? req.body.note.trim().slice(0, 300) : "";
+  const payment = { _id: new mongoose.Types.ObjectId(), amount, method, date, note, recordedBy: new mongoose.Types.ObjectId(req.admin.id) };
+
+  // One atomic step: the filter only matches while the new total still fits, so
+  // two people recording the same payment at once can't overpay the sale.
+  const sale = await Sale.findOneAndUpdate(
+    { _id: req.params.id, $expr: { $lte: [{ $add: ["$amountPaid", amount] }, { $add: ["$totalAmount", 0.005] }] } },
+    [
+      { $set: { amountPaid: { $add: ["$amountPaid", amount] }, payments: { $concatArrays: [{ $ifNull: ["$payments", []] }, [{ $literal: payment }]] } /* $literal: a note like "$100" must stay text, not become a field reference */ } },
+      { $set: { paymentStatus: { $cond: [{ $gte: ["$amountPaid", { $subtract: ["$totalAmount", 0.005] }] }, "Paid", "Partial"] } } },
+    ],
+    { new: true }
+  );
+  if (!sale) {
+    const existing = await Sale.findById(req.params.id);
+    if (!existing) return res.status(404).json({ error: "Sale not found" });
+    const owed = Math.max(0, existing.totalAmount - existing.amountPaid);
+    throw new HttpError(400, owed <= 0 ? "This sale is already fully paid." : `That's more than is owed — the balance is ₦${owed.toLocaleString("en-NG")}.`);
+  }
+  audit(req, "sale.payment", `Payment of ₦${amount.toLocaleString("en-NG")} on ${sale.productName}${sale.customerName ? " (" + sale.customerName + ")" : ""}`);
+  const out = sale.toObject();
+  if (req.admin.role !== "owner") delete out.costPriceAtSale;
+  res.status(201).json(out);
+});
+
+// DELETE /api/sales/:id/payments/:paymentId — owner only: undo a wrongly recorded payment
+router.delete("/:id/payments/:paymentId", requireOwner, async (req, res) => {
+  if (!isId(req.params.paymentId)) throw new HttpError(400, "Invalid payment");
+  const existing = await Sale.findOne({ _id: req.params.id, "payments._id": req.params.paymentId });
+  if (!existing) return res.status(404).json({ error: "Payment not found" });
+  const payment = existing.payments.id(req.params.paymentId);
+  const sale = await Sale.findOneAndUpdate(
+    { _id: req.params.id, "payments._id": req.params.paymentId },
+    [
+      { $set: { amountPaid: { $max: [0, { $subtract: ["$amountPaid", payment.amount] }] }, payments: { $filter: { input: "$payments", cond: { $ne: ["$$this._id", payment._id] } } } } },
+      { $set: { paymentStatus: { $cond: [{ $gte: ["$amountPaid", { $subtract: ["$totalAmount", 0.005] }] }, "Paid", { $cond: [{ $gt: ["$amountPaid", 0] }, "Partial", "Unpaid"] }] } } },
+    ],
+    { new: true }
+  );
+  audit(req, "sale.payment.delete", `Removed a payment of ₦${payment.amount.toLocaleString("en-NG")} on ${existing.productName}`);
+  res.json(sale);
 });
 
 // DELETE /api/sales/:id — reverses the stock decrease before deleting
@@ -92,14 +91,17 @@ router.delete("/:id", requireOwner, async (req, res) => {
   const sale = await Sale.findById(req.params.id);
   if (!sale) return res.status(404).json({ error: "Sale not found" });
 
-  const productDoc = await Product.findById(sale.product);
+  const productDoc = await Product.findOneAndUpdate({ _id: sale.product }, { $inc: { quantity: sale.quantity } }, { new: true });
   if (productDoc) {
-    productDoc.quantity += sale.quantity;
-    if (productDoc.quantity > productDoc.lowStockThreshold) productDoc.status = "In stock";
-    await productDoc.save();
+    const newStatus = computeStatus(productDoc);
+    if (newStatus !== productDoc.status) {
+      productDoc.status = newStatus;
+      await productDoc.save();
+    }
   }
 
   await sale.deleteOne();
+  audit(req, "sale.delete", `Deleted sale: ${sale.quantity} × ${sale.productName} (₦${Number(sale.totalAmount).toLocaleString("en-NG")})${sale.customerName ? " to " + sale.customerName : ""}`);
   res.json({ message: "Sale deleted and stock restored" });
 });
 

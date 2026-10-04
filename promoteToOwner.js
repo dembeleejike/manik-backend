@@ -1,32 +1,36 @@
 // Run this ONCE after deploying the role-based access update, to promote
-// your existing admin account(s) to "owner" — they'd otherwise default to
-// "staff" (limited access) since they were created before roles existed.
+// an existing admin account to "owner" — accounts created before roles
+// existed would otherwise default to "staff" (limited access).
 //
-// Usage: node promoteToOwner.js youremail@example.com
+// Usage: node promoteToOwner.js <email-or-phone>
 
 require("dotenv").config();
 const mongoose = require("mongoose");
 const Admin = require("./models/Admin");
+const { normalizePhone, looksLikeEmail } = require("./utils/phone");
 
-const email = process.argv[2];
+const identifier = process.argv[2];
 
 async function run() {
-  if (!email) {
-    console.error("Usage: node promoteToOwner.js youremail@example.com");
+  if (!identifier) {
+    console.error("Usage: node promoteToOwner.js <email-or-phone>");
     process.exit(1);
   }
 
   await mongoose.connect(process.env.MONGODB_URI);
 
-  const admin = await Admin.findOne({ email: email.toLowerCase() });
+  const query = looksLikeEmail(identifier)
+    ? { email: identifier.toLowerCase() }
+    : { phone: normalizePhone(identifier) };
+  const admin = await Admin.findOne(query);
   if (!admin) {
-    console.log(`No admin found with email ${email}`);
+    console.log(`No admin found for ${identifier}`);
     process.exit(1);
   }
 
   admin.role = "owner";
   await admin.save();
-  console.log(`${email} is now an owner — full access restored.`);
+  console.log(`${identifier} is now an owner — full access restored.`);
   process.exit(0);
 }
 

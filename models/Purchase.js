@@ -4,8 +4,8 @@ const purchaseSchema = new mongoose.Schema(
   {
     product: { type: mongoose.Schema.Types.ObjectId, ref: "Product", required: true },
     productName: { type: String, required: true }, // snapshot at time of purchase, survives product edits/deletes
-    quantity: { type: Number, required: true },
-    unitCost: { type: Number, required: true },
+    quantity: { type: Number, required: true, min: 0.0001 },
+    unitCost: { type: Number, required: true, min: 0 },
     totalCost: { type: Number, required: true }, // quantity * unitCost
     supplier: { type: String, default: "" },
     invoiceRef: { type: String, default: "" },
