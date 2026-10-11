@@ -15,6 +15,8 @@ const Admin = require("./models/Admin");
 const Customer = require("./models/Customer");
 const Sale = require("./models/Sale");
 const Product = require("./models/Product");
+const Location = require("./models/Location");
+const { ensureDefaultLocations } = require("./utils/locationHelpers");
 const { normalizePhone } = require("./utils/phone");
 const { computeStatus } = require("./utils/helpers");
 
@@ -80,7 +82,33 @@ async function run() {
   }
   console.log(`Customer phone numbers standardised: ${customersFixed}, duplicates merged: ${merged}`);
 
-  // 4. Product stock status
+  // 4. Stock locations. Stock is now kept per location (Shop / Warehouse / …).
+  //    Creates "Shop" and "Warehouse" if there are no locations yet, then puts the stock each
+  //    product had BEFORE locations existed into one place so nothing is lost. By default that is
+  //    the Shop (so selling carries on exactly as before); to start everything in the warehouse
+  //    instead, run:  MIGRATE_STOCK_LOCATION=Warehouse npm run migrate
+  await ensureDefaultLocations();
+  const wanted = (process.env.MIGRATE_STOCK_LOCATION || "Shop").trim();
+  const target = (await Location.findOne({ name: new RegExp(`^${wanted.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i") })) || (await Location.findOne({ isDefaultSelling: true })) || (await Location.findOne());
+  let adopted = 0, totalsFixed = 0;
+  for (const p of await Product.find()) {
+    if (!p.stock || p.stock.length === 0) {
+      if (p.quantity > 0) {
+        p.stock = [{ location: target._id, quantity: p.quantity }];
+        await p.save();
+        adopted++;
+      }
+    } else {
+      const sum = p.stock.reduce((n, s) => n + s.quantity, 0);
+      if (sum !== p.quantity) {
+        await Product.updateOne({ _id: p._id }, { quantity: sum }); // the total must always equal the sum of the locations
+        totalsFixed++;
+      }
+    }
+  }
+  console.log(`Stock locations ready (${target.name} received the existing stock of ${adopted} products). Totals corrected: ${totalsFixed}`);
+
+  // 5. Product stock status
   let statusFixed = 0;
   for (const p of await Product.find()) {
     const s = computeStatus(p);

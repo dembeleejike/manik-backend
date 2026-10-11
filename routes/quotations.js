@@ -5,6 +5,8 @@ const Quote = require("../models/Quote");
 const Counter = require("../models/Counter");
 const { requireAdmin, requireOwner } = require("../middleware/auth");
 const { recordSale } = require("../utils/salesService");
+const stock = require("../utils/stock");
+const { resolveLocation } = require("../utils/locationHelpers");
 const { parseRangeBound } = require("../utils/dates");
 const { HttpError, validateIdParam, requireNumber, isId } = require("../utils/helpers");
 const { audit } = require("../utils/audit");
@@ -148,7 +150,9 @@ router.post("/:id/convert", async (req, res) => {
   const skipped = q.lines.filter((l) => !l.product).map((l) => l.description);
   if (stockLines.length === 0) throw new HttpError(400, "None of the items are linked to a product in stock, so there is nothing to sell. Link items to products when editing the quotation.");
 
-  // Check ALL the stock first, so we don't sell half of a quotation and then fail.
+  // Check ALL the stock first (at the chosen location — the shop unless another is picked),
+  // so we don't sell half of a quotation and then fail.
+  const location = await resolveLocation(req.body.location, "selling");
   const need = new Map();
   for (const l of stockLines) need.set(String(l.product), (need.get(String(l.product)) || 0) + l.quantity);
   const products = await Product.find({ _id: { $in: [...need.keys()] } });
@@ -157,9 +161,11 @@ router.post("/:id/convert", async (req, res) => {
   for (const [id, qty] of need) {
     const p = byId.get(id);
     if (!p) short.push("a product that no longer exists");
-    else if (p.quantity < qty) short.push(`${p.name} (need ${qty}, have ${p.quantity})`);
+    else if (stock.quantityAt(p, location._id) < qty && !(p.quantity > 0 && (!p.stock || p.stock.length === 0))) {
+      short.push(`${p.name} (need ${qty}, ${location.name} has ${stock.quantityAt(p, location._id)}${p.quantity > stock.quantityAt(p, location._id) ? `; ${p.quantity} in total across locations` : ""})`);
+    }
   }
-  if (short.length) throw new HttpError(400, `Not enough stock: ${short.join("; ")}`);
+  if (short.length) throw new HttpError(400, `Not enough stock: ${short.join("; ")}. Move stock to ${location.name} first, or choose another location.`);
 
   const method = req.body.paymentMethod === undefined ? "Cash" : req.body.paymentMethod;
   let deposit = req.body.deposit === undefined || req.body.deposit === "" ? 0 : requireNumber(req.body.deposit, "deposit", { min: 0 });
@@ -181,7 +187,7 @@ router.post("/:id/convert", async (req, res) => {
           product: l.product, quantity: l.quantity, unitPrice,
           customerName: q.customerName, customerPhone: q.customerPhone,
           paymentStatus: pay >= total - 0.005 ? "Paid" : pay > 0 ? "Partial" : "Unpaid", amountPaid: pay,
-          paymentMethod: method, notes: `From quotation ${q.number}`, fromQuotation: q._id,
+          paymentMethod: method, notes: `From quotation ${q.number}`, fromQuotation: q._id, location: location._id,
         },
         req.admin.id
       );

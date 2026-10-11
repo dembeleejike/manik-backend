@@ -7,6 +7,8 @@ const purchaseSchema = new mongoose.Schema(
     quantity: { type: Number, required: true, min: 0.0001 },
     unitCost: { type: Number, required: true, min: 0 },
     totalCost: { type: Number, required: true }, // quantity * unitCost
+    location: { type: mongoose.Schema.Types.ObjectId, ref: "Location" }, // where the goods were delivered to
+    locationName: { type: String, default: "" },
     supplier: { type: String, default: "" },
     invoiceRef: { type: String, default: "" },
     date: { type: Date, default: Date.now },

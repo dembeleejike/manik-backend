@@ -9,6 +9,8 @@ const Category = require("../models/Category");
 const Project = require("../models/Project");
 const Quotation = require("../models/Quotation");
 const StockAdjustment = require("../models/StockAdjustment");
+const Location = require("../models/Location");
+const Transfer = require("../models/Transfer");
 const { requireOwner } = require("../middleware/auth");
 const { HttpError, isId } = require("../utils/helpers");
 const { audit } = require("../utils/audit");
@@ -21,6 +23,7 @@ const router = express.Router();
 // Order matters only for readability of the report; restores are independent
 // per table. (Admin logins are deliberately NOT part of backups or restores.)
 const TABLES = [
+  ["locations", Location, "Stock locations"],
   ["categories", Category, "Categories"],
   ["products", Product, "Products"],
   ["sales", Sale, "Sales"],
@@ -31,6 +34,7 @@ const TABLES = [
   ["projects", Project, "Projects"],
   ["quotations", Quotation, "Quotations"],
   ["stockAdjustments", StockAdjustment, "Stock counts"],
+  ["transfers", Transfer, "Stock moves"],
 ];
 const MAX_PER_TABLE = 100000;
 

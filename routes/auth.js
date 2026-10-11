@@ -3,6 +3,7 @@ const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const Admin = require("../models/Admin");
 const { requireAdmin, requireOwner } = require("../middleware/auth");
+const { effectiveRole, superEmail, SUPER, ADMIN, STAFF } = require("../utils/roles");
 const { loginLimiter, loginIpLimiter } = require("../middleware/rateLimiters");
 const { normalizePhone, looksLikeEmail } = require("../utils/phone");
 const { isId } = require("../utils/helpers");
@@ -27,7 +28,7 @@ function signToken(admin) {
 }
 
 function publicAdmin(a) {
-  return { id: a._id, email: a.email, phone: a.phone, name: a.name, role: a.role };
+  return { id: a._id, email: a.email, phone: a.phone, name: a.name, role: effectiveRole(a) };
 }
 
 // POST /api/auth/login — body: { identifier, password }. `identifier` is an
@@ -51,7 +52,7 @@ router.post("/login", loginIpLimiter, loginLimiter, async (req, res) => {
     audit(null, "login.failed", `Failed sign-in attempt (${masked})`);
     return res.status(401).json({ error: "Invalid login details" });
   }
-  audit({ admin: { id: admin._id, name: admin.name, role: admin.role } }, "login", "Signed in");
+  audit({ admin: { id: admin._id, name: admin.name, role: effectiveRole(admin) } }, "login", "Signed in");
 
   setSessionCookie(req, res, signToken(admin));
   // The token is deliberately NOT returned in the response body — it lives only
@@ -63,7 +64,7 @@ router.post("/login", loginIpLimiter, loginLimiter, async (req, res) => {
 // since it can no longer read the cookie itself)
 router.get("/me", requireAdmin, (req, res) => {
   const a = req.admin;
-  res.json({ admin: { id: a.id, email: a.email, phone: a.phone, name: a.name, role: a.role } });
+  res.json({ admin: { id: a.id, email: a.email, phone: a.phone, name: a.name, role: a.role } }); // role is already the effective rank
 });
 
 // POST /api/auth/logout — clears the session cookie
@@ -72,13 +73,19 @@ router.post("/logout", (req, res) => {
   res.json({ message: "Signed out" });
 });
 
-// GET /api/auth/admins — owner only, lists every admin account
+// GET /api/auth/admins — lists logins. The super admin is invisible to everyone
+// except the super admin themself.
 router.get("/admins", requireOwner, async (req, res) => {
   const admins = await Admin.find().select("-password").sort({ createdAt: 1 });
-  res.json(admins);
+  const out = admins
+    .map((a) => ({ ...a.toObject(), role: effectiveRole(a) }))
+    .filter((a) => req.admin.isSuper || a.role !== SUPER);
+  res.json(out);
 });
 
-// POST /api/auth/admins — owner only, creates a new login with a chosen role.
+// POST /api/auth/admins — an admin or the super admin creates a login: "owner"
+// (shown as Admin) or "staff". Nobody can create a super admin — that rank belongs
+// to the one email in SUPER_ADMIN_EMAIL.
 router.post("/admins", requireOwner, async (req, res) => {
   const { email, phone, password, name, role } = req.body;
   const hasEmail = typeof email === "string" && email.trim() !== "";
@@ -97,6 +104,9 @@ router.post("/admins", requireOwner, async (req, res) => {
     return res.status(400).json({ error: "That phone number doesn't look right" });
   }
 
+  if (hasEmail && superEmail() && email.trim().toLowerCase() === superEmail()) {
+    return res.status(409).json({ error: "An admin with this email or phone number already exists" });
+  }
   const duplicate = await Admin.findOne({
     $or: [
       ...(hasEmail ? [{ email: email.trim().toLowerCase() }] : []),
@@ -112,28 +122,47 @@ router.post("/admins", requireOwner, async (req, res) => {
     phone: hasPhone ? phone : undefined,
     password,
     name: (typeof name === "string" && name.trim()) || "Admin",
-    role: role === "owner" ? "owner" : "staff",
+    role: role === ADMIN ? ADMIN : STAFF,
   });
-  audit(req, "admin.create", `Added ${admin.role} login: ${admin.name}`);
+  audit(req, "admin.create", `Added ${admin.role === ADMIN ? "admin" : "staff"} login: ${admin.name}`);
   res.status(201).json(publicAdmin(admin));
 });
 
-// DELETE /api/auth/admins/:id — owner only. An admin can't delete their own
-// account, and the last remaining owner can't be removed, so the business can
-// never be locked out of its own dashboard.
+// DELETE /api/auth/admins/:id — admins and the super admin can remove admins and
+// staff. Nobody can remove the super admin, or their own account.
 router.delete("/admins/:id", requireOwner, async (req, res) => {
   if (!isId(req.params.id)) return res.status(400).json({ error: "Invalid id" });
   if (req.params.id === req.admin.id) {
     return res.status(400).json({ error: "You can't remove your own account while logged in as it" });
   }
   const target = await Admin.findById(req.params.id);
-  if (!target) return res.status(404).json({ error: "Admin not found" });
-  if (target.role === "owner" && (await Admin.countDocuments({ role: "owner" })) <= 1) {
-    return res.status(400).json({ error: "You can't remove the last owner account" });
+  const targetRole = target ? effectiveRole(target) : null;
+  // To anyone but the super admin, the super admin simply doesn't exist.
+  if (!target || (targetRole === SUPER && !req.admin.isSuper)) return res.status(404).json({ error: "Admin not found" });
+  if (targetRole === SUPER) return res.status(400).json({ error: "The super admin account can't be removed" });
+  if (targetRole === ADMIN && !req.admin.isSuper && (await Admin.countDocuments({ role: { $in: [ADMIN, SUPER] } })) <= 1) {
+    return res.status(400).json({ error: "You can't remove the last admin account" });
   }
   await target.deleteOne();
-  audit(req, "admin.delete", `Removed ${target.role} login: ${target.name}`);
+  audit(req, "admin.delete", `Removed ${targetRole === ADMIN ? "admin" : "staff"} login: ${target.name}`);
   res.json({ message: "Admin removed" });
+});
+
+// PUT /api/auth/admins/:id/role — an admin or the super admin makes someone an
+// Admin, or moves an Admin back to staff. Nobody can change the super admin's rank
+// or their own (so no one can lock themselves out).
+router.put("/admins/:id/role", requireOwner, async (req, res) => {
+  if (!isId(req.params.id)) return res.status(400).json({ error: "Invalid id" });
+  const role = req.body.role;
+  if (role !== ADMIN && role !== STAFF) return res.status(400).json({ error: "Role must be admin or staff" });
+  const target = await Admin.findById(req.params.id);
+  if (!target || (effectiveRole(target) === SUPER && !req.admin.isSuper)) return res.status(404).json({ error: "Admin not found" });
+  if (effectiveRole(target) === SUPER) return res.status(400).json({ error: "The super admin's rank can't be changed" });
+  if (String(target._id) === req.admin.id) return res.status(400).json({ error: "You can't change your own rank" });
+  target.role = role;
+  await target.save();
+  audit(req, "admin.role", `${target.name} is now ${role === ADMIN ? "an admin" : "staff"}`);
+  res.json(publicAdmin(target));
 });
 
 // PUT /api/auth/password — any logged-in admin changes their own password

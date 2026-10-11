@@ -11,7 +11,7 @@ const adminSchema = new mongoose.Schema(
     phone: { type: String, trim: true, unique: true, sparse: true }, // stored normalized, e.g. 08060984868
     password: { type: String, required: true }, // stored hashed, never plain text
     name: { type: String, default: "Admin", trim: true, maxlength: 100 },
-    role: { type: String, enum: ["owner", "staff"], default: "staff" }, // owner sees financials/settings, staff handles day-to-day
+    role: { type: String, enum: ["superadmin", "owner", "staff"], default: "staff" }, // superadmin = the one business owner; "owner" is shown as Admin; staff handles day-to-day
     tokenVersion: { type: Number, default: 0 }, // bumping this signs the person out of every device (used on password change)
   },
   { timestamps: true }
@@ -35,6 +35,9 @@ adminSchema.pre("save", async function (next) {
   this.password = await bcrypt.hash(this.password, 10);
   next();
 });
+
+// Only ONE super admin can ever exist (the database refuses a second).
+adminSchema.index({ role: 1 }, { unique: true, partialFilterExpression: { role: "superadmin" } });
 
 adminSchema.methods.comparePassword = function (candidate) {
   return bcrypt.compare(candidate, this.password);

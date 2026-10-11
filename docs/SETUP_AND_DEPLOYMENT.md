@@ -40,9 +40,10 @@ A free Render service falls asleep after about 15 minutes without visitors, and 
 ## First-time and upgrade steps
 1. `npm install`
 2. `node createAdmin.js you@example.com "a-long-passphrase" "Your Name"` (first time only)
-3. **Upgrading an existing database:** `npm run migrate` once.
+3. **Upgrading an existing database:** `npm run migrate` once. It also sets up the stock locations (Shop and Warehouse) and places the stock products already had into the **Shop** so selling carries on as before. To put it all in the warehouse instead: `MIGRATE_STOCK_LOCATION=Warehouse npm run migrate`. Afterwards use *Stock count* (per place and category) to correct what is really where.
 4. Everyone is signed out once after this upgrade (sessions changed) — just sign in again.
-5. In GitHub add the secrets `API_URL` and `BACKUP_SECRET`, then run the *Nightly backup* workflow once from the Actions tab.
+5. **Super admin:** in Render → Environment add `SUPER_ADMIN_EMAIL` (your own login email), then run `npm run migrate` once (it builds the one-super-admin index). On the next start the server logs "Super admin rank applied."
+6. In GitHub add the secrets `API_URL` and `BACKUP_SECRET`, then run the *Nightly backup* workflow once from the Actions tab.
 
 ## Local development
 Backend: `npm run dev` (port 5000). Admin: `npm run dev` — it forwards `/api` to `http://localhost:5000` automatically (change with `VITE_DEV_API`).

@@ -61,7 +61,7 @@ test("bad input is rejected cleanly instead of crashing", async () => {
 });
 
 test("private routes require a valid login", async () => {
-  for (const p of ["/api/sales", "/api/reports/summary", "/api/audit", "/api/export/all.xlsx", "/api/export/backup", "/api/customers", "/api/quotations", "/api/stocktake"]) {
+  for (const p of ["/api/sales", "/api/reports/summary", "/api/audit", "/api/export/all.xlsx", "/api/export/backup", "/api/customers", "/api/quotations", "/api/stocktake", "/api/locations", "/api/transfers"]) {
     assert.strictEqual((await call(p)).status, 401, p);
   }
   assert.strictEqual((await post("/api/restore", { backup: {} })).status, 401);
@@ -135,4 +135,10 @@ test("a wrong password never looks like an expired session (that would sign the 
   assert.ok(!/status\(401\)/.test(changePassword), "change-password must not answer 401");
   const exp = fs.readFileSync(path.join(__dirname, "..", "routes", "export.js"), "utf8");
   assert.ok(!/status\(401\)/.test(exp), "export routes must not answer 401");
+});
+
+test("moving stock and managing locations require a login", async () => {
+  assert.strictEqual((await post("/api/transfers", { from: "x", to: "y", items: [] })).status, 401);
+  assert.strictEqual((await post("/api/locations", { name: "Branch" })).status, 401);
+  assert.strictEqual((await call("/api/export/stocklevels.xlsx")).status, 401);
 });

@@ -40,7 +40,10 @@ function getDateRange(period, from, to) {
 }
 
 const sum = (field) => ({ $sum: field });
-const cogsExpr = { $multiply: ["$quantity", { $ifNull: ["$costPriceAtSale", 0] }] };
+// Returns are netted off: revenue, units and cost only count what the customer kept.
+const netQty = { $subtract: ["$quantity", { $ifNull: ["$returnedQuantity", 0] }] };
+const netTotal = { $subtract: ["$totalAmount", { $ifNull: ["$returnedAmount", 0] }] };
+const cogsExpr = { $multiply: [netQty, { $ifNull: ["$costPriceAtSale", 0] }] };
 
 // GET /api/reports/summary?period=today|week|month|year|custom&from=&to=
 // Returns revenue, cost of goods sold, expenses and net profit for the period.
@@ -53,13 +56,13 @@ router.get("/summary", async (req, res) => {
   const [salesAgg, expenseAgg, purchaseAgg, topProducts] = await Promise.all([
     Sale.aggregate([
       { $match: dateFilter },
-      { $group: { _id: null, revenue: sum("$totalAmount"), costOfGoodsSold: sum(cogsExpr), unitsSold: sum("$quantity"), salesCount: sum(1) } },
+      { $group: { _id: null, revenue: sum(netTotal), costOfGoodsSold: sum(cogsExpr), unitsSold: sum(netQty), salesCount: sum(1) } },
     ]),
     Expense.aggregate([{ $match: dateFilter }, { $group: { _id: null, total: sum("$amount") } }]),
     Purchase.aggregate([{ $match: dateFilter }, { $group: { _id: null, total: sum("$totalCost") } }]),
     Sale.aggregate([
       { $match: dateFilter },
-      { $group: { _id: "$productName", units: sum("$quantity"), revenue: sum("$totalAmount") } },
+      { $group: { _id: "$productName", units: sum(netQty), revenue: sum(netTotal) } },
       { $sort: { units: -1 } },
       { $limit: 5 },
       { $project: { _id: 0, name: "$_id", units: 1, revenue: 1 } },
@@ -93,7 +96,7 @@ router.get("/yearly", async (req, res) => {
 
   // Two queries for the whole year (instead of 24 one-month queries).
   const [salesByMonth, expensesByMonth] = await Promise.all([
-    Sale.aggregate([{ $match: range }, { $group: { _id: monthOf, revenue: sum("$totalAmount"), costOfGoodsSold: sum(cogsExpr) } }]),
+    Sale.aggregate([{ $match: range }, { $group: { _id: monthOf, revenue: sum(netTotal), costOfGoodsSold: sum(cogsExpr) } }]),
     Expense.aggregate([{ $match: range }, { $group: { _id: monthOf, total: sum("$amount") } }]),
   ]);
 

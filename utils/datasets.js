@@ -9,6 +9,8 @@ const Customer = require("../models/Customer");
 const Quote = require("../models/Quote");
 const Quotation = require("../models/Quotation");
 const StockAdjustment = require("../models/StockAdjustment");
+const Location = require("../models/Location");
+const Transfer = require("../models/Transfer");
 const { dateFilterFromQuery } = require("./dates");
 const { buildWorkbook } = require("./xlsx");
 
@@ -18,18 +20,45 @@ const DATASETS = {
   products: {
     title: "Products",
     async load() {
-      return Product.find().populate("category", "name").sort({ name: 1 });
+      const [products, locations] = await Promise.all([Product.find().populate("category", "name").sort({ name: 1 }), Location.find().sort({ sortOrder: 1, name: 1 })]);
+      const names = new Map(locations.map((l) => [String(l._id), l.name]));
+      return products.map((p) => ({ ...p.toObject(), category: p.category, _where: (p.stock || []).filter((s) => s.quantity > 0).map((s) => `${names.get(String(s.location)) || "?"}: ${s.quantity}`).join("; ") }));
     },
     columns: [
       { label: "Ref", get: (p) => p.ref },
       { label: "Name", get: (p) => p.name },
       { label: "Category", get: (p) => p.category?.name || "" },
       { label: "Status", get: (p) => p.status },
-      { label: "Stock quantity", get: (p) => p.quantity, type: "number" },
+      { label: "Total on hand", get: (p) => p.quantity, type: "number" },
+      { label: "Where it is", get: (p) => p._where },
       { label: "Low-stock level", get: (p) => p.lowStockThreshold, type: "number" },
       { label: "Cost price", get: (p) => p.costPrice, type: "money" },
       { label: "Selling price", get: (p) => p.sellingPrice, type: "money" },
+      { label: "Stock value (cost)", get: (p) => p.quantity * (p.costPrice || 0), type: "money" },
       { label: "Added", get: (p) => p.createdAt, type: "date" },
+    ],
+  },
+  stocklevels: {
+    title: "Stock by location",
+    // one row per product per location that holds (or held) some of it
+    async load() {
+      const [products, locations] = await Promise.all([Product.find().populate("category", "name").sort({ name: 1 }), Location.find().sort({ sortOrder: 1, name: 1 })]);
+      const names = new Map(locations.map((l) => [String(l._id), l.name]));
+      const rows = [];
+      for (const p of products) {
+        for (const s of p.stock || []) rows.push({ p, location: names.get(String(s.location)) || "Unknown location", quantity: s.quantity });
+        if ((!p.stock || p.stock.length === 0) && p.quantity > 0) rows.push({ p, location: "Not yet assigned", quantity: p.quantity });
+      }
+      return rows;
+    },
+    columns: [
+      { label: "Category", get: (r) => r.p.category?.name || "" },
+      { label: "Ref", get: (r) => r.p.ref },
+      { label: "Product", get: (r) => r.p.name },
+      { label: "Location", get: (r) => r.location },
+      { label: "Quantity", get: (r) => r.quantity, type: "number" },
+      { label: "Cost price", get: (r) => r.p.costPrice, type: "money" },
+      { label: "Value (cost)", get: (r) => r.quantity * (r.p.costPrice || 0), type: "money" },
     ],
   },
   sales: {
@@ -45,15 +74,20 @@ const DATASETS = {
       { label: "Phone", get: (s) => s.customerPhone },
       { label: "Product", get: (s) => s.productName },
       { label: "Category", get: (s) => s.product?.category?.name || "" },
+      { label: "Sold from", get: (s) => s.locationName },
       { label: "Quantity", get: (s) => s.quantity, type: "number" },
       { label: "Unit price", get: (s) => s.unitPrice, type: "money" },
       { label: "Total", get: (s) => s.totalAmount, type: "money" },
+      { label: "Qty returned", get: (s) => s.returnedQuantity || 0, type: "number" },
+      { label: "Value returned", get: (s) => s.returnedAmount || 0, type: "money" },
+      { label: "Net total", get: (s) => s.totalAmount - (s.returnedAmount || 0), type: "money" },
       { label: "Amount paid", get: (s) => s.amountPaid, type: "money" },
-      { label: "Balance owed", get: (s) => s.totalAmount - s.amountPaid, type: "money" },
+      { label: "Refunded", get: (s) => s.refundedAmount || 0, type: "money" },
+      { label: "Balance owed", get: (s) => Math.max(0, s.totalAmount - (s.returnedAmount || 0) - (s.amountPaid - (s.refundedAmount || 0))), type: "money" },
       { label: "Payment status", get: (s) => s.paymentStatus },
       { label: "Payment method", get: (s) => s.paymentMethod },
-      { label: "Cost at sale", get: (s) => s.quantity * (s.costPriceAtSale || 0), type: "money" },
-      { label: "Profit", get: (s) => s.totalAmount - s.quantity * (s.costPriceAtSale || 0), type: "money" },
+      { label: "Cost at sale", get: (s) => (s.quantity - (s.returnedQuantity || 0)) * (s.costPriceAtSale || 0), type: "money" },
+      { label: "Profit", get: (s) => s.totalAmount - (s.returnedAmount || 0) - (s.quantity - (s.returnedQuantity || 0)) * (s.costPriceAtSale || 0), type: "money" },
       { label: "Notes", get: (s) => s.notes },
     ],
   },
@@ -65,6 +99,7 @@ const DATASETS = {
     columns: [
       { label: "Date", get: (p) => p.date, type: "date" },
       { label: "Product", get: (p) => p.productName },
+      { label: "Delivered to", get: (p) => p.locationName },
       { label: "Supplier", get: (p) => p.supplier },
       { label: "Invoice ref", get: (p) => p.invoiceRef },
       { label: "Quantity", get: (p) => p.quantity, type: "number" },
@@ -96,8 +131,8 @@ const DATASETS = {
             $group: {
               _id: "$customerPhone",
               sales: { $sum: 1 },
-              spent: { $sum: "$totalAmount" },
-              paid: { $sum: "$amountPaid" },
+              spent: { $sum: { $subtract: ["$totalAmount", { $ifNull: ["$returnedAmount", 0] }] } },
+              paid: { $sum: { $subtract: ["$amountPaid", { $ifNull: ["$refundedAmount", 0] }] } },
               last: { $max: "$date" },
             },
           },
@@ -145,6 +180,8 @@ const DATASETS = {
       { label: "Date", get: (a) => a.at, type: "date" },
       { label: "Product", get: (a) => a.productName },
       { label: "Ref", get: (a) => a.productRef },
+      { label: "Category counted", get: (a) => a.categoryName },
+      { label: "Location", get: (a) => a.locationName },
       { label: "System had", get: (a) => a.before, type: "number" },
       { label: "Counted / set to", get: (a) => a.after, type: "number" },
       { label: "Difference", get: (a) => a.difference, type: "number" },
@@ -152,6 +189,23 @@ const DATASETS = {
       { label: "Reason", get: (a) => a.reason },
       { label: "By", get: (a) => a.byName },
       { label: "Note", get: (a) => a.note },
+    ],
+  },
+  transfers: {
+    title: "Stock moves",
+    async load(query) {
+      const range = dateFilterFromQuery(query);
+      return Transfer.find(range.date ? { at: range.date } : {}).sort({ at: -1 });
+    },
+    columns: [
+      { label: "Date", get: (t) => t.at, type: "date" },
+      { label: "Product", get: (t) => t.productName },
+      { label: "Category", get: (t) => t.categoryName },
+      { label: "From", get: (t) => t.fromName },
+      { label: "To", get: (t) => t.toName },
+      { label: "Quantity", get: (t) => t.quantity, type: "number" },
+      { label: "By", get: (t) => t.byName },
+      { label: "Note", get: (t) => t.note },
     ],
   },
   quotes: {

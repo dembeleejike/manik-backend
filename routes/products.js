@@ -4,9 +4,10 @@ const Category = require("../models/Category");
 const { requireAdmin, optionalAdmin } = require("../middleware/auth");
 const { upload, uploadAll, deleteImagesByUrls } = require("../config/cloudinary");
 const Sale = require("../models/Sale");
-const StockAdjustment = require("../models/StockAdjustment");
+const stock = require("../utils/stock");
+const { resolveLocation } = require("../utils/locationHelpers");
 const Purchase = require("../models/Purchase");
-const { escapeRegex, HttpError, validateIdParam, parseJsonField, requireNumber, isId } = require("../utils/helpers");
+const { escapeRegex, HttpError, validateIdParam, parseJsonField, requireNumber, isId, computeStatus } = require("../utils/helpers");
 
 const { audit } = require("../utils/audit");
 const router = express.Router();
@@ -16,9 +17,9 @@ router.param("id", validateIdParam);
 //  - website visitors: no cost, no selling price, no exact stock levels
 //  - staff accounts:   everything EXCEPT what the shop pays (cost price)
 //  - owner accounts:   everything
-const PUBLIC_HIDDEN = "-costPrice -sellingPrice -quantity -lowStockThreshold";
+const PUBLIC_HIDDEN = "-costPrice -sellingPrice -quantity -lowStockThreshold -stock";
 const STAFF_HIDDEN = "-costPrice";
-const visibleFields = (req) => (!req.admin ? PUBLIC_HIDDEN : req.admin.role === "owner" ? "" : STAFF_HIDDEN);
+const visibleFields = (req) => (!req.admin ? PUBLIC_HIDDEN : req.admin.isOwner ? "" : STAFF_HIDDEN);
 
 // GET /api/products — public. Supports ?category=<id> and ?search=<text>
 router.get("/", optionalAdmin, async (req, res) => {
@@ -49,7 +50,7 @@ router.get("/:id", optionalAdmin, async (req, res) => {
 // Removes the owner-only cost price from a product before it is sent to staff.
 function forViewer(product, req) {
   const obj = product.toObject ? product.toObject() : { ...product };
-  if (req.admin.role !== "owner") delete obj.costPrice;
+  if (!req.admin.isOwner) delete obj.costPrice;
   return obj;
 }
 
@@ -91,7 +92,9 @@ function buildProductFields(body, { partial, isOwner = true }) {
   }
   // Staff accounts can never set or change the cost price — it is owner-only
   // information, and it is also updated automatically from recorded purchases.
-  for (const key of ["quantity", "costPrice", "sellingPrice", "lowStockThreshold"]) {
+  // (Stock quantity is NOT editable here: it changes only through Purchases, Sales, Transfers
+  // and Stock counts, so every change is recorded and the per-location numbers stay right.)
+  for (const key of ["costPrice", "sellingPrice", "lowStockThreshold"]) {
     if (key === "costPrice" && !isOwner) continue;
     if (body[key] !== undefined && body[key] !== "") out[key] = requireNumber(body[key], key, { min: 0 });
   }
@@ -106,15 +109,28 @@ function buildProductFields(body, { partial, isOwner = true }) {
 
 // POST /api/products — admin only, with optional image uploads (field name: "images")
 router.post("/", requireAdmin, upload.array("images", 6), async (req, res) => {
-  const fields = buildProductFields(req.body, { partial: false, isOwner: req.admin.role === "owner" });
+  const fields = buildProductFields(req.body, { partial: false, isOwner: req.admin.isOwner });
   if (!(await Category.exists({ _id: fields.category }))) return res.status(400).json({ error: "That category doesn't exist" });
 
   if ((req.files || []).length > MAX_PHOTOS) throw new HttpError(400, `A product can have at most ${MAX_PHOTOS} photos.`);
+  // Opening stock (optional): how many are on the shelf right now, and where.
+  let openingQty = 0, openingLocation = null;
+  if (req.body.quantity !== undefined && req.body.quantity !== "") {
+    openingQty = requireNumber(req.body.quantity, "opening stock", { min: 0 });
+    if (openingQty > 0) openingLocation = await resolveLocation(req.body.location, "receiving");
+  }
+
   const images = await uploadAll(req.files); // Cloudinary URLs
   try {
     const product = await Product.create({ ...fields, images });
-    audit(req, "product.create", `Added product: ${product.name} (${product.ref})`);
-    res.status(201).json(forViewer(product, req));
+    if (openingQty > 0) {
+      await stock.put(Product, product._id, openingLocation._id, openingQty);
+      const fresh = await Product.findById(product._id);
+      const status = computeStatus(fresh);
+      if (status !== fresh.status) { fresh.status = status; await fresh.save(); }
+    }
+    audit(req, "product.create", `Added product: ${product.name} (${product.ref})${openingQty > 0 ? ` with ${openingQty} in ${openingLocation.name}` : ""}`);
+    res.status(201).json(forViewer(await Product.findById(product._id), req));
   } catch (err) {
     if (err.code === 11000) return res.status(409).json({ error: "A product with this reference code already exists" });
     throw err;
@@ -123,7 +139,7 @@ router.post("/", requireAdmin, upload.array("images", 6), async (req, res) => {
 
 // PUT /api/products/:id — admin only, add more images optionally
 router.put("/:id", requireAdmin, upload.array("images", 6), async (req, res) => {
-  const updates = buildProductFields(req.body, { partial: true, isOwner: req.admin.role === "owner" });
+  const updates = buildProductFields(req.body, { partial: true, isOwner: req.admin.isOwner });
   if (updates.category && !(await Category.exists({ _id: updates.category }))) {
     return res.status(400).json({ error: "That category doesn't exist" });
   }
@@ -149,14 +165,6 @@ router.put("/:id", requireAdmin, upload.array("images", 6), async (req, res) => 
   try {
     const product = await Product.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true });
     if (removed.length) deleteImagesByUrls(removed); // free the storage (best effort)
-    // A hand-typed stock change is recorded, so a number never changes without a trace.
-    if (updates.quantity !== undefined && updates.quantity !== existing.quantity) {
-      await StockAdjustment.create({
-        product: existing._id, productName: existing.name, productRef: existing.ref, before: existing.quantity, after: updates.quantity,
-        difference: updates.quantity - existing.quantity, unitCost: existing.costPrice || 0, reason: "Correction", note: "Edited on the product",
-        by: req.admin.id, byName: req.admin.name || req.admin.email || req.admin.phone || "",
-      });
-    }
     const changed = Object.keys(updates).filter((k) => k !== "images").join(", ");
     audit(req, "product.update", `Edited product: ${product.name} (${product.ref})${changed ? " — " + changed : ""}${updates.images ? " — photos" : ""}${removed.length ? ` (${removed.length} removed)` : ""}`);
     res.json(forViewer(product, req));

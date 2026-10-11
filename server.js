@@ -29,6 +29,8 @@ const backupRoutes = require("./routes/backup");
 const restoreRoutes = require("./routes/restore");
 const quotationRoutes = require("./routes/quotations");
 const stocktakeRoutes = require("./routes/stocktake");
+const locationRoutes = require("./routes/locations");
+const transferRoutes = require("./routes/transfers");
 const auditRoutes = require("./routes/audit");
 
 const app = express();
@@ -93,6 +95,8 @@ app.use("/api/backup", backupRoutes);
 app.use("/api/restore", restoreRoutes);
 app.use("/api/quotations", quotationRoutes);
 app.use("/api/stocktake", stocktakeRoutes);
+app.use("/api/locations", locationRoutes);
+app.use("/api/transfers", transferRoutes);
 app.use("/api/audit", auditRoutes);
 
 app.use((req, res) => res.status(404).json({ error: "Not found" }));

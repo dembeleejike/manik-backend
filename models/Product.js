@@ -13,7 +13,10 @@ const productSchema = new mongoose.Schema(
       enum: ["In stock", "Low stock", "Made to order", "Out of stock"],
       default: "In stock",
     },
-    quantity: { type: Number, default: 0, min: 0 }, // real stock count — updated automatically by purchases/sales
+    // Stock is kept per location (shop, warehouse…). `quantity` is ALWAYS the total across
+    // all locations and is only ever changed together with a stock line (see utils/stock.js).
+    stock: { type: [{ _id: false, location: { type: mongoose.Schema.Types.ObjectId, ref: "Location", required: true }, quantity: { type: Number, default: 0, min: 0 } }], default: [] },
+    quantity: { type: Number, default: 0, min: 0 }, // total on hand across every location
     lowStockThreshold: { type: Number, default: 5, min: 0 }, // below this, status can be flagged Low stock
     costPrice: { type: Number, default: 0, min: 0 }, // what MANIK pays per unit — used for stock value & profit calculations
     sellingPrice: { type: Number, default: 0, min: 0 }, // default selling price — can be overridden per sale

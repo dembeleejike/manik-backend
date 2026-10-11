@@ -9,6 +9,8 @@ const Category = require("../models/Category");
 const Project = require("../models/Project");
 const Quotation = require("../models/Quotation");
 const StockAdjustment = require("../models/StockAdjustment");
+const Location = require("../models/Location");
+const Transfer = require("../models/Transfer");
 const { requireOwner } = require("../middleware/auth");
 const { DATASETS, buildFullWorkbook, LAGOS_MS } = require("../utils/datasets");
 const { buildWorkbook, buildCsv } = require("../utils/xlsx");
@@ -28,11 +30,11 @@ const today = () => new Date().toISOString().slice(0, 10);
 // Reads every business record into one object — the same shape the nightly
 // backup uses, and the shape the restore feature accepts.
 async function collectBackup() {
-  const [products, categories, sales, purchases, expenses, customers, quotes, projects, quotations, stockAdjustments] = await Promise.all([
+  const [products, categories, sales, purchases, expenses, customers, quotes, projects, quotations, stockAdjustments, locations, transfers] = await Promise.all([
     Product.find(), Category.find(), Sale.find(), Purchase.find(),
-    Expense.find(), Customer.find(), Quote.find(), Project.find(), Quotation.find(), StockAdjustment.find(),
+    Expense.find(), Customer.find(), Quote.find(), Project.find(), Quotation.find(), StockAdjustment.find(), Location.find(), Transfer.find(),
   ]);
-  return { app: "manik", version: 3, exportedAt: new Date(), products, categories, sales, purchases, expenses, customers, quotes, projects, quotations, stockAdjustments };
+  return { app: "manik", version: 4, exportedAt: new Date(), products, categories, sales, purchases, expenses, customers, quotes, projects, quotations, stockAdjustments, locations, transfers };
 }
 
 // GET /api/export/backup — the complete backup as a JSON file (the file you
@@ -76,7 +78,7 @@ router.post("/email-backup", backupEmailLimiter, async (req, res) => {
 //   format:  csv | xlsx   ("all" is xlsx only — one sheet per table)
 //   optional ?from=YYYY-MM-DD&to=YYYY-MM-DD for the dated tables
 router.get("/:file", async (req, res) => {
-  const match = /^(all|products|sales|purchases|expenses|customers|quotes|quotations|stockcounts)\.(csv|xlsx)$/.exec(req.params.file);
+  const match = /^(all|products|stocklevels|sales|purchases|expenses|customers|quotes|quotations|stockcounts|transfers)\.(csv|xlsx)$/.exec(req.params.file);
   if (!match) return res.status(404).json({ error: "Not found" });
   const [, name, format] = match;
 

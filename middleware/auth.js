@@ -1,5 +1,6 @@
 const jwt = require("jsonwebtoken");
 const Admin = require("../models/Admin");
+const { effectiveRole, isOwnerLevel, SUPER } = require("../utils/roles");
 
 const { COOKIE_NAME, parseCookies } = require("../utils/session");
 
@@ -23,7 +24,8 @@ async function loadAdmin(token) {
   const admin = await Admin.findById(decoded.id).select("email phone role name tokenVersion");
   if (!admin) return null;
   if ((decoded.tv ?? -1) !== (admin.tokenVersion || 0)) return null; // signed out everywhere (e.g. password changed)
-  return { id: String(admin._id), email: admin.email, phone: admin.phone, role: admin.role, name: admin.name };
+  const role = effectiveRole(admin);
+  return { id: String(admin._id), email: admin.email, phone: admin.phone, role, name: admin.name, isOwner: isOwnerLevel(role), isSuper: role === SUPER };
 }
 
 async function requireAdmin(req, res, next) {
@@ -58,9 +60,17 @@ async function requireAdmin(req, res, next) {
 // seeing profit numbers or being able to change business settings.
 function requireOwner(req, res, next) {
   requireAdmin(req, res, () => {
-    if (req.admin.role !== "owner") {
-      return res.status(403).json({ error: "Only an owner account can access this" });
+    if (!req.admin.isOwner) {
+      return res.status(403).json({ error: "Only an admin account can access this" });
     }
+    next();
+  });
+}
+
+// Only the one super admin.
+function requireSuper(req, res, next) {
+  requireAdmin(req, res, () => {
+    if (!req.admin.isSuper) return res.status(403).json({ error: "Only the super admin can do this" });
     next();
   });
 }
@@ -79,4 +89,4 @@ async function optionalAdmin(req, res, next) {
   next();
 }
 
-module.exports = { requireAdmin, requireOwner, optionalAdmin };
+module.exports = { requireAdmin, requireOwner, requireSuper, optionalAdmin };

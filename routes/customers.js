@@ -21,8 +21,8 @@ router.get("/", async (req, res) => {
       {
         $group: {
           _id: "$customerPhone",
-          totalSpent: { $sum: "$totalAmount" },
-          totalPaid: { $sum: "$amountPaid" },
+          totalSpent: { $sum: { $subtract: ["$totalAmount", { $ifNull: ["$returnedAmount", 0] }] } }, // after returns
+          totalPaid: { $sum: { $subtract: ["$amountPaid", { $ifNull: ["$refundedAmount", 0] }] } }, // after refunds
           purchaseCount: { $sum: 1 },
           lastPurchase: { $max: "$date" },
         },
@@ -54,8 +54,8 @@ router.get("/:id", async (req, res) => {
     if (!customer) return res.status(404).json({ error: "Customer not found" });
 
     const sales = await Sale.find({ customerPhone: customer.phone }).sort({ date: -1 });
-    const totalSpent = sales.reduce((sum, s) => sum + s.totalAmount, 0);
-    const totalPaid = sales.reduce((sum, s) => sum + s.amountPaid, 0);
+    const totalSpent = sales.reduce((sum, s) => sum + s.totalAmount - (s.returnedAmount || 0), 0);
+    const totalPaid = sales.reduce((sum, s) => sum + s.amountPaid - (s.refundedAmount || 0), 0);
 
     res.json({
       ...customer.toObject(),

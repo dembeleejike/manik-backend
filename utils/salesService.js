@@ -8,6 +8,9 @@ const { sendLowStockAlert } = require("./sendEmail");
 const { normalizePhone } = require("./phone");
 const { parseRangeBound } = require("./dates");
 const { HttpError, requireNumber, computeStatus, isId } = require("./helpers");
+const stock = require("./stock");
+const Location = require("../models/Location");
+const { resolveLocation, defaultLocation } = require("./locationHelpers");
 
 const PAYMENT_STATUSES = ["Paid", "Partial", "Unpaid"];
 const PAYMENT_METHODS = ["Cash", "Bank Transfer", "POS", "Other"];
@@ -17,6 +20,7 @@ const PAYMENT_METHODS = ["Cash", "Bank Transfer", "POS", "Other"];
 // Returns { sale, product } (product = the updated product document).
 async function recordSale(input, adminId) {
   const { product, customerName, customerPhone, paymentStatus, amountPaid, paymentMethod, date, notes, fromQuote, fromQuotation } = input;
+  const location = await resolveLocation(input.location, "selling"); // the shop unless another place is chosen
 
   if (!isId(String(product))) throw new HttpError(400, "A valid product is required");
   const quantity = requireNumber(input.quantity, "quantity", { min: 0, exclusiveMin: true });
@@ -42,17 +46,25 @@ async function recordSale(input, adminId) {
   else resolvedAmountPaid = status === "Paid" ? totalAmount : 0;
   if (resolvedAmountPaid > totalAmount + 0.005) throw new HttpError(400, "Amount paid can't be more than the total");
 
-  // Take the stock first, atomically: the filter only matches if enough stock
-  // is still there, so two simultaneous sales can never oversell the same units.
+  // Take the stock first, atomically, from ONE location: it only succeeds if that
+  // location still holds enough, so two simultaneous sales can never sell the same units.
   const before = await Product.findById(product);
   if (!before) throw new HttpError(404, "Product not found");
 
-  const updated = await Product.findOneAndUpdate(
-    { _id: product, quantity: { $gte: quantity } },
-    { $inc: { quantity: -quantity } },
-    { new: true }
-  );
-  if (!updated) throw new HttpError(400, `Not enough stock of ${before.name} — only ${before.quantity} available`);
+  const fallback = await defaultLocation("selling");
+  const taken = await stock.take(Product, product, location._id, quantity, fallback && fallback._id);
+  if (!taken) {
+    const current = await Product.findById(product);
+    const here = stock.quantityAt(current, location._id);
+    const others = (current.stock || []).filter((s) => String(s.location) !== String(location._id) && s.quantity > 0);
+    let hint = "";
+    if (others.length) {
+      const names = new Map((await Location.find({ _id: { $in: others.map((o) => o.location) } })).map((l) => [String(l._id), l.name]));
+      hint = ` ${others.map((o) => `${o.quantity} more at ${names.get(String(o.location)) || "another location"}`).join(", ")} — move stock to ${location.name} first, or sell from there.`;
+    }
+    throw new HttpError(400, `Not enough ${before.name} at ${location.name} — only ${here} there.${hint}`);
+  }
+  const updated = await Product.findById(product);
 
   let sale;
   try {
@@ -60,11 +72,11 @@ async function recordSale(input, adminId) {
       product, productName: updated.name, quantity, unitPrice, totalAmount,
       costPriceAtSale: updated.costPrice, customerName: customerName || "", customerPhone: normalizePhone(customerPhone),
       paymentStatus: status, amountPaid: resolvedAmountPaid, paymentMethod, date: saleDate, notes, fromQuote: fromQuote || undefined,
-      fromQuotation: fromQuotation || undefined, recordedBy: adminId,
+      fromQuotation: fromQuotation || undefined, location: location._id, locationName: location.name, recordedBy: adminId,
     });
   } catch (err) {
     // The sale couldn't be recorded — give the stock back rather than lose it.
-    await Product.updateOne({ _id: product }, { $inc: { quantity } });
+    await stock.put(Product, product, location._id, quantity);
     throw err;
   }
 
@@ -88,7 +100,7 @@ async function recordSale(input, adminId) {
     );
   }
 
-  if (before.quantity > before.lowStockThreshold && updated.quantity <= updated.lowStockThreshold) {
+  if (before.quantity > before.lowStockThreshold && updated.quantity <= updated.lowStockThreshold) { // total across all locations
     sendLowStockAlert(updated); // fire-and-forget
   }
 

@@ -15,7 +15,7 @@ const mailerConfigured = () => !!(process.env.EMAIL_USER && process.env.EMAIL_AP
 async function ownerEmails() {
   const found = new Set();
   try {
-    const owners = await Admin.find({ role: "owner", email: { $exists: true, $nin: [null, ""] } }).select("email");
+    const owners = await Admin.find({ role: { $in: ["owner", "superadmin"] }, email: { $exists: true, $nin: [null, ""] } }).select("email");
     for (const o of owners) if (isValidEmail(o.email)) found.add(o.email.trim().toLowerCase());
   } catch (err) {
     console.error("Couldn't read owner emails:", err.message);

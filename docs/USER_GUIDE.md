@@ -35,8 +35,17 @@ Sign in with your **email address or phone number** and your password. You stay 
 - *Customers → open a customer → Account statement*: a PDF listing every charge and payment with a running balance, for all time or for dates you choose. The **WhatsApp** button sends a polite payment reminder with the amount owed.
 - The **Overview** page lists who owes you the most.
 
+## Where your stock is (shop, warehouse, other places)
+The system keeps every product's stock **per place**, and always knows the total.
+- **Goods arrive** → *Purchases* → they go to the **warehouse** by default. You can pick another place on each purchase.
+- **A sale** takes from the **shop** by default (pick another place on the sale if needed). If the shop is short but the warehouse has some, the sale form says so and tells you how many are elsewhere.
+- **Some goods go to the shop** → *Stock on hand → Move stock*: choose where from, where to, add several products and quantities, save. The total never changes — only where it is. Every move is recorded (who, when, how many).
+- **Stock on hand** shows: units everywhere, units at each place, (owner) stock value, then **By product** (each with Shop / Warehouse / … chips), **By category** (Glass, Profiles, Accessories… with totals per place) and **Moves** (the history). All of it searchable, sortable and exportable.
+- The **Overview** page warns you when something is low in the shop but stocked in the warehouse ("Bring to the Shop").
+- The owner manages the places in *Business Settings → Stock locations*: add one, rename it, choose which receives new stock and which sales come from, or switch off an empty one.
+
 ## Stock count (checking the shelves)
-*Stock count*: walk through the shop and type what you actually counted. The page shows the difference for each product as you type, then asks you to confirm before anything changes. After saving, quantities are set to your counts and each difference is recorded permanently under **History** (who, when, how many missing or extra — and for the owner, what the shortage cost). Editing a quantity directly on a product is also recorded there as a *Correction*.
+*Stock count*: first choose **which place** you are counting (Shop or Warehouse) and **which category** (for example Glass), then type what you actually counted. The page shows the difference for each product as you type, then asks you to confirm before anything changes. After saving, only that place and that category change — quantities there are set to your counts — and each difference is recorded permanently under **History** with the place and category (who, when, how many missing or extra — and for the owner, what the shortage cost). A product's quantity can no longer be typed in directly: it changes only through Purchases, Sales, Moves and Stock counts, so every change leaves a record.
 
 ## Product and project photos
 - Up to **8 photos per product** and **12 per project**.
@@ -70,3 +79,12 @@ See [BACKUP_AND_RESTORE.md](BACKUP_AND_RESTORE.md).
 - **A stock number is off** → look in Purchases and Sales for a missing or doubled entry. Deleting a wrong entry puts the stock back. You can also correct the quantity by editing the product.
 - **A customer appears twice** → phone numbers are matched in one standard format (`0806…` = `+234 806…`), so this should not happen after the one-time migration (`npm run migrate`).
 - **Can't delete a product** → it already has sales or purchases. Set its status to *Out of stock* instead.
+
+
+## Ranks: super admin, admin, staff
+- **Super admin** — the business owner. Exactly one person: the email in the server setting `SUPER_ADMIN_EMAIL`. Nobody else can see this account or its activity, create another one, or change its rank. Nobody else can touch it.
+- **Admin** — full access to money, customers, reports and settings; can add admins and staff, promote/demote and remove them (never the super admin or themselves).
+- **Staff** — day-to-day tools only (products, quotes, sales, purchases, returns, stock counts).
+
+## Returns
+On any sale press **Return**. Choose the quantity, the credit (default quantity × price; lower it to keep a fee), the money handed back (default: whatever the customer overpaid, can be 0), whether goods go back on the shelf and to which place (untick for damaged goods). Stock, balances, reports, invoices/receipts, statements and spreadsheets follow automatically. The original sale is never rewritten; admins can undo a return (only while the goods are still at that place).

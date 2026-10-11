@@ -10,6 +10,8 @@ const Category = require("../models/Category");
 const Project = require("../models/Project");
 const Quotation = require("../models/Quotation");
 const StockAdjustment = require("../models/StockAdjustment");
+const Location = require("../models/Location");
+const Transfer = require("../models/Transfer");
 const { uploadRawBuffer } = require("../config/cloudinary");
 const { sendBackupEmail } = require("../utils/sendEmail");
 const { buildFullWorkbook } = require("../utils/datasets");
@@ -40,15 +42,15 @@ function requireBackupSecret(req, res, next) {
 // Cloudinary, and emails a copy to the owner. Two independent safety copies
 // from one run.
 router.post("/run", requireBackupSecret, async (req, res) => {
-  const [products, categories, sales, purchases, expenses, customers, quotes, projects, quotations, stockAdjustments] = await Promise.all([
+  const [products, categories, sales, purchases, expenses, customers, quotes, projects, quotations, stockAdjustments, locations, transfers] = await Promise.all([
     Product.find(), Category.find(), Sale.find(), Purchase.find(),
-    Expense.find(), Customer.find(), Quote.find(), Project.find(), Quotation.find(), StockAdjustment.find(),
+    Expense.find(), Customer.find(), Quote.find(), Project.find(), Quotation.find(), StockAdjustment.find(), Location.find(), Transfer.find(),
   ]);
 
   const backup = {
-    app: "manik", version: 3,
+    app: "manik", version: 4,
     exportedAt: new Date(),
-    products, categories, sales, purchases, expenses, customers, quotes, projects, quotations, stockAdjustments,
+    products, categories, sales, purchases, expenses, customers, quotes, projects, quotations, stockAdjustments, locations, transfers,
   };
   const jsonBuffer = Buffer.from(JSON.stringify(backup, null, 2));
   const dateStr = new Date().toISOString().slice(0, 10);

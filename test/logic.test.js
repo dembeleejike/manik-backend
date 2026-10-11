@@ -50,3 +50,25 @@ test("payment-note text starting with $ is kept as plain text by the update pipe
   const stage = { $set: { payments: { $concatArrays: [{ $ifNull: ["$payments", []] }, [{ $literal: payment }]] } } };
   assert.deepStrictEqual(stage.$set.payments.$concatArrays[1][0].$literal.note, "$100 balance");
 });
+
+test("locations and transfers validate", async () => {
+  const Location = require("../models/Location");
+  const Transfer = require("../models/Transfer");
+  const ok = new Location({ name: "Shop", kind: "shop" });
+  assert.strictEqual(ok.validateSync(), undefined);
+  assert.ok(new Location({ name: "", kind: "shop" }).validateSync(), "no name");
+  assert.ok(new Location({ name: "X", kind: "garage" }).validateSync(), "unknown kind");
+  const base = { product: "507f1f77bcf86cd799439011", productName: "Glass", from: "507f1f77bcf86cd799439012", fromName: "Warehouse", to: "507f1f77bcf86cd799439013", toName: "Shop", quantity: 5 };
+  assert.strictEqual(new Transfer(base).validateSync(), undefined);
+  assert.ok(new Transfer({ ...base, quantity: 0 }).validateSync(), "zero quantity");
+  assert.ok(new Transfer({ ...base, to: undefined }).validateSync(), "needs a destination");
+});
+
+test("a product keeps stock lines per location and rejects negative stock", () => {
+  const Product = require("../models/Product");
+  const p = new Product({ name: "Glass 5mm", ref: "G5", category: "507f1f77bcf86cd799439011", quantity: 30, stock: [{ location: "507f1f77bcf86cd799439012", quantity: 10 }, { location: "507f1f77bcf86cd799439013", quantity: 20 }] });
+  assert.strictEqual(p.validateSync(), undefined);
+  assert.strictEqual(p.stock.length, 2);
+  assert.ok(new Product({ name: "x", ref: "x", category: "507f1f77bcf86cd799439011", stock: [{ location: "507f1f77bcf86cd799439012", quantity: -1 }] }).validateSync(), "negative stock line");
+  assert.ok(new Product({ name: "x", ref: "x", category: "507f1f77bcf86cd799439011", stock: [{ quantity: 1 }] }).validateSync(), "stock line needs a location");
+});

@@ -97,8 +97,12 @@ Runs on `http://localhost:5000` by default. Visit `http://localhost:5000/` — y
 | PUT | `/api/quotations/:id/status` | admin | Draft / Sent / Accepted / Declined |
 | POST | `/api/quotations/:id/convert` | admin | Turn the stock items into sales (`deposit`, `paymentMethod`) |
 | DELETE | `/api/quotations/:id` | owner | Delete |
+| GET/POST | `/api/locations` | admin / owner | List stock places (Shop, Warehouse…) / add one |
+| PUT | `/api/locations/:id` | owner | Rename, set default receiving/selling place, switch off/on |
+| GET | `/api/transfers` | admin | History of stock moved between places |
+| POST | `/api/transfers` | admin | Move stock between places `{ from, to, items: [{ product, quantity }], note }` |
 | GET | `/api/stocktake` | admin | History of stock counts and corrections |
-| POST | `/api/stocktake` | admin | Save a stock count `{ counts: [{ product, counted }], note }` |
+| POST | `/api/stocktake` | admin | Save a stock count for one place (and usually one category): `{ location, category?, counts: [{ product, counted }], note }` |
 | GET | `/api/audit` | owner | Activity log. Optional `?q=&action=&from=&to=&limit=` |
 | POST | `/api/backup/run` | backup secret | Nightly backup (called by the scheduled GitHub Action) |
 
@@ -122,6 +126,7 @@ Render or Railway both work well for this (Vercel is built for frontends/serverl
 
 ## Documentation
 
+- [`docs/GO_LIVE_CHECKLIST.md`](docs/GO_LIVE_CHECKLIST.md) — step-by-step deploy, upgrade and test list, with rollback
 - [`docs/SETUP_AND_DEPLOYMENT.md`](docs/SETUP_AND_DEPLOYMENT.md) — environment variables, the `/api` forwarding that makes secure sign-in work, upgrade steps
 - [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) — plain-language guide for the shop owner and staff
 - [`docs/BACKUP_AND_RESTORE.md`](docs/BACKUP_AND_RESTORE.md) — how backups work, how to restore, and what a restore does and doesn't do
@@ -129,4 +134,4 @@ Render or Railway both work well for this (Vercel is built for frontends/serverl
 
 ## Tests
 
-`npm test` runs 16 automated checks (no database needed): phone/date helpers, the Excel/CSV writer, and the server's safety rules (login required, bad input rejected, CORS, spam trap, backup secret).
+`npm run verify:stock` checks the stock logic against a real **test** database (see the go-live checklist). `npm test` runs 45 automated checks (no database needed): phone/date helpers, the Excel/CSV writer, and the server's safety rules (login required, bad input rejected, CORS, spam trap, backup secret).

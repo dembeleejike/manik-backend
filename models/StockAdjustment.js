@@ -12,6 +12,9 @@ const stockAdjustmentSchema = new mongoose.Schema(
     after: { type: Number, required: true },
     difference: { type: Number, required: true }, // after - before (negative = stock was missing)
     unitCost: { type: Number, default: 0 }, // owner-only: lets the owner see what a shortage cost
+    location: { type: mongoose.Schema.Types.ObjectId, ref: "Location" },
+    locationName: { type: String, default: "" },
+    categoryName: { type: String, default: "" }, // the category that was being counted
     reason: { type: String, enum: ["Stocktake", "Correction"], default: "Stocktake" },
     note: { type: String, default: "", maxlength: 300 },
     batch: { type: String, default: "" }, // groups the lines of one stocktake

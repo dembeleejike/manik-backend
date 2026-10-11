@@ -1,7 +1,7 @@
 # Backup and restore
 
 ## What gets backed up
-Products, categories, sales, purchases, expenses, customers, quote requests and projects.
+Products (with their stock in every place), stock locations, stock moves, stock counts, categories, sales, purchases, expenses, customers, quote requests, quotations and projects.
 
 **Not included (on purpose):** admin logins and passwords. Backups are files that get emailed around, so they never contain anyone's password.
 
